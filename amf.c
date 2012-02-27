@@ -58,16 +58,31 @@ AMFValue amf_new_string(const char *string, int length) {
     return v;
 }
 
+static AMFValue amf__new_object(AMFValue classname) {
+    assert(!classname || (classname && classname->type == AMF_STRING));
+    AMFValue v = amf__new_value(classname ? AMF_TYPEDOBJECT : AMF_OBJECT);
+    v->v.object.type = classname;
+    return v;
+}
+
 AMFValue amf_new_object() {
-    return amf__new_value(AMF_OBJECT);
+    return amf__new_object(NULL);
 }
 
 AMFValue amf_new_null() {
     return amf__new_value(AMF_NULL);
 }
 
+AMFValue amf_new_undefined() {
+    return amf__new_value(AMF_UNDEFINED);
+}
+
 AMFValue amf_new_array() {
     return amf__new_value(AMF_ARRAY);
+}
+
+AMFValue amf_new_typed_object(AMFValue classname) {
+    return amf__new_object(classname);
 }
 
 const char *amf_cstr(AMFValue v) {
@@ -83,8 +98,8 @@ int amf_strlen(AMFValue v) {
 }
 
 int amf_strcmp(AMFValue a, AMFValue b) {
-    assert(a->type == AMF_OBJECT);
-    assert(b->type == AMF_OBJECT);
+    assert(a->type == AMF_STRING);
+    assert(b->type == AMF_STRING);
     int lena = amf_strlen(a), lenb = amf_strlen(b);
     if (lena != lenb)
 	return lena - lenb;
@@ -92,11 +107,11 @@ int amf_strcmp(AMFValue a, AMFValue b) {
 }
 
 AMFValue amf_object_get(AMFValue v, AMFValue key) {
-    assert(v && v->type == AMF_OBJECT);
+    assert(v && (v->type == AMF_OBJECT || v->type == AMF_TYPEDOBJECT));
     assert(key && key->type == AMF_STRING);
 
     struct amf_kvlist *kvp;
-    for (kvp = v->v.object; kvp; kvp = kvp->next)
+    for (kvp = v->v.object.first; kvp; kvp = kvp->next)
 	if (strncmp(amf_cstr(key), amf_cstr(kvp->entry.key),
 		    amf_strlen(kvp->entry.key)) == 0)
 	    return kvp->entry.value;
@@ -104,12 +119,12 @@ AMFValue amf_object_get(AMFValue v, AMFValue key) {
 }
 
 AMFValue amf_object_set(AMFValue v, AMFValue key, AMFValue value) {
-    assert(v && v->type == AMF_OBJECT);
+    assert(v && (v->type == AMF_OBJECT || v->type == AMF_TYPEDOBJECT));
     assert(key && key->type == AMF_STRING);
 
     struct amf_kvlist *kvp;
-    struct amf_kvlist **kvprev = &v->v.object;
-    for (kvp = v->v.object; kvp; kvp = kvp->next) {
+    struct amf_kvlist **kvprev = &v->v.object.first;
+    for (kvp = v->v.object.first; kvp; kvp = kvp->next) {
 	if (strncmp(amf_cstr(key), amf_cstr(kvp->entry.key),
 		    amf_strlen(kvp->entry.key)) == 0) {
 	    amf_retain(value);
@@ -130,9 +145,9 @@ AMFValue amf_object_set(AMFValue v, AMFValue key, AMFValue value) {
 }
 
 void amf_objectiter_init(AMFObjectIter *it, AMFValue v) {
-    assert(v && v->type == AMF_OBJECT);
+    assert(v && (v->type == AMF_OBJECT || v->type == AMF_TYPEDOBJECT));
     it->object = amf_retain(v);
-    it->current = v->v.object;
+    it->current = v->v.object.first;
 }
 
 void amf_objectiter_cleanup(AMFObjectIter *it) {
@@ -197,6 +212,121 @@ AMFValue amf_arrayiter_current(AMFArrayIter *it) {
     return NULL;
 }
 
+static AMFValue amf__parse_value(const char **data, int *length);
+
+static AMFValue amf__parse_string(const char **data, int *length) {
+    const char *p = *data;
+    if (*length < sizeof(uint16_t))
+	return NULL;
+    uint16_t strlength = (uint16_t)NTOH16(*((uint16_t *)p));
+    if (*length < sizeof(uint16_t) + strlength)
+	return NULL;
+    AMFValue value = amf_new_string(p + sizeof(uint16_t), strlength);
+    *data += sizeof(uint16_t) + strlength;
+    *length -= sizeof(uint16_t) + strlength;
+    return value;
+}
+
+static AMFValue amf__parse_object(AMFValue holder, const char **data, int *length) {
+    const char *p = *data;
+    int left = *length;
+    while (left > 0) {
+	AMFValue ekey = amf__parse_string(&p, &left);
+	if (amf_strlen(ekey) == 0) {
+	    amf_release(ekey);
+	    break;
+	}
+	AMFValue evalue = amf__parse_value(&p, &left);
+	amf_object_set(holder, ekey, evalue);
+	amf_release(ekey);
+	amf_release(evalue);
+    }
+    if (*p != AMF_OAEND) {
+	amf_release(holder);
+	return NULL;
+    }
+    *data = p + 1;
+    *length = left - 1;
+    return holder;
+}
+
+static AMFValue amf__parse_value(const char **data, int *length) {
+    const char *p = *data;
+    int left = *length - 1;
+    AMFValue value = NULL;
+    char type = *p++;
+    switch (type) {
+	case AMF_NUMBER:
+	    if (left < sizeof(double))
+		return NULL;
+	    int64_t number = NTOH64(*((int64_t *)p));
+	    value = amf_new_number(*((double *)&number));
+	    p += sizeof(double);
+	    left -= sizeof(double);
+	    break;
+
+	case AMF_BOOLEAN:
+	    if (left < sizeof(char))
+		return NULL;
+	    value = amf_new_boolean(*((char *)p));
+	    p += sizeof(char);
+	    left -= sizeof(char);
+	    break;
+
+	case AMF_STRING:
+	    value = amf__parse_string(&p, &left);
+	    break;
+
+	case AMF_OBJECT:
+	    value = amf__parse_object(amf_new_object(), &p, &left);
+	    break;
+
+	case AMF_NULL:
+	    value = amf_new_null();
+	    break;
+
+	case AMF_UNDEFINED:
+	    value = amf_new_undefined();
+	    break;
+
+	case AMF_ARRAY:
+	    {
+		if (left < sizeof(uint32_t))
+		    return NULL;
+		uint32_t assocarray_count = (uint32_t)NTOH32(*((int32_t *)p));
+		p += sizeof(uint32_t);
+		left -= sizeof(uint32_t);
+		value = amf__parse_object(amf_new_object(), &p, &left);
+	    }
+	    break;
+
+	case AMF_TYPEDOBJECT:
+	    {
+		AMFValue classname = amf__parse_string(&p, &left);
+		if (!classname)
+		    return NULL;
+		value = amf__parse_object(amf_new_typed_object(classname), &p, &left);
+	    }
+	    break;
+
+	default:
+	    fprintf(stderr, "Unknown type: %02X\n", (int)type);
+	    return NULL;
+    }
+
+    *data = p;
+    *length = left;
+
+    return value;
+}
+
+AMFValue amf_parse_value(const char *data, int length, int *left) {
+    AMFValue value = amf__parse_value(&data, &length);
+    if (left)
+	*left = length;
+    return value;
+}
+
 static void amf__dump_print_indent(int indent) {
     int i;
     for (i = 0; i < indent; i++)
@@ -208,17 +338,23 @@ static void amf__dump_print(AMFValue v, int indent) {
 	case AMF_NUMBER:
 	    fprintf(stderr, "(Number) %f\n", v->v.number);
 	    break;
+
 	case AMF_BOOLEAN:
 	    fprintf(stderr, "(Boolean) %s\n", v->v.boolean ? "True" : "False");
 	    break;
+
 	case AMF_STRING:
 	    fprintf(stderr, "(String) \"");
 	    fwrite(amf_cstr(v), amf_strlen(v), 1, stderr);
 	    fprintf(stderr, "\"\n");
 	    break;
+
 	case AMF_OBJECT:
+	case AMF_TYPEDOBJECT:
 	    {
-		fprintf(stderr, "(Object)\n");
+		fprintf(stderr, "(Object)%s%s\n",
+			v->type == AMF_TYPEDOBJECT ? " " : "",
+			v->type == AMF_TYPEDOBJECT ? amf_cstr(v->v.object.type) : "");
 		AMFObjectIter it;
 		AMFKeyValuePair *kv;
 		amf_objectiter_init(&it, v);
@@ -227,15 +363,21 @@ static void amf__dump_print(AMFValue v, int indent) {
 		    fprintf(stderr, "\"");
 		    fwrite(amf_cstr(kv->key), amf_strlen(kv->key), 1, stderr);
 		    fprintf(stderr, "\": ");
-		    amf__dump_print(kv->value, indent + 2);
+		    amf__dump_print(kv->value, indent + 1);
 		    amf_objectiter_next(&it);
 		}
 		amf_objectiter_cleanup(&it);
 	    }
 	    break;
+
 	case AMF_NULL:
 	    fprintf(stderr, "(Null)\n");
 	    break;
+
+	case AMF_UNDEFINED:
+	    fprintf(stderr, "(Undefined)\n");
+	    break;
+
 	case AMF_ARRAY:
 	    {
 		fprintf(stderr, "(Array)\n");
@@ -250,6 +392,7 @@ static void amf__dump_print(AMFValue v, int indent) {
 		amf_arrayiter_cleanup(&it);
 	    }
 	    break;
+
 	default:
 	    fprintf(stderr, "(Unknown type: %02X)\n", v->type);
 	    break;

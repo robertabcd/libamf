@@ -3,16 +3,32 @@
 
 #include <stdint.h>
 
-#define AMF_NUMBER  (0)
-#define AMF_BOOLEAN (1)
-#define AMF_STRING  (2)
-#define AMF_OBJECT  (3)
-#define AMF_NULL    (5)
-#define AMF_ARRAY   (8)
-#define AMF_OAEND   (9)
+#include <endian.h>
+
+#if __BYTE_ORDER == __LITTLE_ENDIAN
+#include <byteswap.h>
+#   define NTOH64(x) bswap_64(x)
+#   define NTOH32(x) bswap_32(x)
+#   define NTOH16(x) bswap_16(x)
+#else
+#   define NTOH64(x) (x)
+#   define NTOH32(x) (x)
+#   define NTOH16(x) (x)
+#endif
+
+#define AMF_NUMBER  (0x00)
+#define AMF_BOOLEAN (0x01)
+#define AMF_STRING  (0x02)
+#define AMF_OBJECT  (0x03)
+#define AMF_NULL    (0x05)
+#define AMF_UNDEFINED (0x06)
+#define AMF_ARRAY   (0x08)
+#define AMF_OAEND   (0x09)
+#define AMF_TYPEDOBJECT (0x10)
 
 struct amf_kvlist;
 struct amf_vlist;
+struct amf_typed_object;
 
 struct amf_string {
     uint16_t length;
@@ -24,6 +40,11 @@ struct amf_array {
     struct amf_vlist *first;
 };
 
+struct amf_object {
+    struct amf_value *type;
+    struct amf_kvlist *first;
+};
+
 struct amf_value {
     int retain_count;
     char type;
@@ -31,7 +52,7 @@ struct amf_value {
 	double number;
 	char boolean;
 	struct amf_string string;
-	struct amf_kvlist *object;
+	struct amf_object object;
 	struct amf_array array;
     } v;
 };
@@ -78,7 +99,9 @@ AMFValue amf_new_boolean(char boolean);
 AMFValue amf_new_string(const char *string, int length);
 AMFValue amf_new_object();
 AMFValue amf_new_null();
+AMFValue amf_new_undefined();
 AMFValue amf_new_array();
+AMFValue amf_new_typed_object(AMFValue classname);
 
 const char *amf_cstr(AMFValue v);
 int amf_strlen(AMFValue v);
@@ -98,6 +121,8 @@ void amf_arrayiter_init(AMFArrayIter *it, AMFValue v);
 void amf_arrayiter_cleanup(AMFArrayIter *it);
 void amf_arrayiter_next(AMFArrayIter *it);
 AMFValue amf_arrayiter_current(AMFArrayIter *it);
+
+AMFValue amf_parse_value(const char *data, int length, int *left);
 
 void amf_dump(AMFValue v);
 
