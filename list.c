@@ -51,6 +51,7 @@ void *list_pop(List list) {
 	list->tail->next = NULL;
     }
     free(e);
+    list->count--;
     return elem;
 }
 
