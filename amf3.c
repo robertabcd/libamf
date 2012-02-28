@@ -176,7 +176,7 @@ AMF3Value amf3_array_assoc_get(AMF3Value a, AMF3Value key) {
 }
 
 AMF3Value amf3_new_object(AMF3Value type, char dynamic, AMF3Value *member_names, int nmemb) {
-    assert(!type || type && type->type == AMF3_STRING);
+    assert(!type || (type && type->type == AMF3_STRING));
     assert(nmemb >= 0);
 
     AMF3Value traits = amf3__new_traits(0, dynamic, nmemb);
@@ -195,7 +195,7 @@ AMF3Value amf3_new_object(AMF3Value type, char dynamic, AMF3Value *member_names,
 	v->v.object.type = amf3_retain(type);
     v->v.object.traits = traits;
     if (nmemb > 0) {
-	v->v.object.m.i.member_values = ALLOC(AMF3Value *, nmemb);
+	v->v.object.m.i.member_values = ALLOC(AMF3Value, nmemb);
 	memset(v->v.object.m.i.member_values, 0, sizeof(AMF3Value *) * nmemb);
     }
     if (dynamic)
@@ -206,18 +206,19 @@ AMF3Value amf3_new_object(AMF3Value type, char dynamic, AMF3Value *member_names,
 AMF3Value amf3_object_prop_get(AMF3Value o, AMF3Value key) {
     assert(o && o->type == AMF3_OBJECT);
     assert(key && key->type == AMF3_STRING);
-    if (o->v.object.traits->externalizable) {
+    struct amf3_traits *traits = &o->v.object.traits->v.traits;
+    if (traits->externalizable) {
 	// TODO
 	return NULL;
     }
-    if (o->v.object.traits->nmemb > 0) {
-	AMF3Value *member_names = o->v.object.traits->members;
+    if (traits->nmemb > 0) {
+	AMF3Value *member_names = traits->members;
 	int i;
-	for (i = 0; i < o->v.object.traits->nmemb; i++)
-	    if (amf3_string_cmp(key, members_names[i]) == 0)
+	for (i = 0; i < traits->nmemb; i++)
+	    if (amf3_string_cmp(key, traits->members[i]) == 0)
 		return o->v.object.m.i.member_values[i];
     }
-    if (o->v.object.traits->dynamic)
+    if (traits->dynamic)
 	return list_foreach(o->v.object.m.i.dynmemb_list, amf3__kv_get_cb, key);
     return NULL;
 }
