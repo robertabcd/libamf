@@ -4,7 +4,7 @@ WARNING: This project is far from complete, please do not use in production.
 
 Currently supports:
     - Parsing AMF values
-    - [AMF0 ONLY] Dumping parsed values
+    - Dumping parsed values
 
 Supported Formats:
     - AMF0
@@ -19,7 +19,7 @@ Supported Formats:
 	0x10 Typed Object
 
     - AMF3
-	Fully support
+	Fully supported
 	Also with common flex objects:
 	* flex.messaging.messages.AcknowledgeMessageExt (DSK)
 	* flex.messaging.messages.AsyncMessageExt (DSA)
