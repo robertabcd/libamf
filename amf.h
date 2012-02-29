@@ -2,19 +2,7 @@
 #   define _AMF_H
 
 #include <stdint.h>
-
-#include <endian.h>
-
-#if __BYTE_ORDER == __LITTLE_ENDIAN
-#include <byteswap.h>
-#   define NTOH64(x) bswap_64(x)
-#   define NTOH32(x) bswap_32(x)
-#   define NTOH16(x) bswap_16(x)
-#else
-#   define NTOH64(x) (x)
-#   define NTOH32(x) (x)
-#   define NTOH16(x) (x)
-#endif
+#include "endian.h"
 
 #define AMF_NUMBER  (0x00)
 #define AMF_BOOLEAN (0x01)
