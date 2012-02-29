@@ -134,4 +134,18 @@ void flex_free_arraylist(void *al);
 void flex_free_objectproxy(void *op);
 void flex_free_managedobjectproxy(void *mop);
 void flex_free_serializationproxy(void *sp);
+
+void flex_dump_abstractmessage(void *AM, int depth);
+void flex_dump_asyncmessage(void *AM, int depth);
+void flex_dump_asyncmessageext(void *am, int depth);
+void flex_dump_acknowledgemessage(void *AM, int depth);
+void flex_dump_acknowledgemessageext(void *am, int depth);
+void flex_dump_errormessage(void *em, int depth);
+void flex_dump_commandmessage(void *CM, int depth);
+void flex_dump_commandmessageext(void *cm, int depth);
+void flex_dump_arraycollection(void *AC, int depth);
+void flex_dump_arraylist(void *al, int depth);
+void flex_dump_objectproxy(void *OP, int depth);
+void flex_dump_managedobjectproxy(void *mop, int depth);
+void flex_dump_serializationproxy(void *SP, int depth);
 #endif

@@ -11,13 +11,48 @@
 
 static const struct amf3_plugin_parser g_plugin_parsers[] = {
 #ifdef HAVE_FLEX_COMMON_OBJECTS
-    {"DSK", flex_parse_acknowledgemessageext, flex_free_acknowledgemessageext},
-    {"flex.messaging.messages.AcknowledgeMessageExt", flex_parse_acknowledgemessageext, flex_free_acknowledgemessageext},
-    {"DSA", flex_parse_asyncmessageext, flex_free_asyncmessageext},
-    {"flex.messaging.messages.AsyncMessageExt", flex_parse_asyncmessageext, flex_free_asyncmessageext},
-    {"DSC", flex_parse_commandmessageext, flex_free_commandmessageext},
-    {"flex.messaging.messages.CommandMessageExt", flex_parse_commandmessageext, flex_free_commandmessageext},
-    {"flex.messaging.io.ArrayCollection", flex_parse_arraycollection, flex_free_arraycollection},
+    {
+	"DSK",
+	flex_parse_acknowledgemessageext,
+	flex_free_acknowledgemessageext,
+	flex_dump_acknowledgemessageext
+    },
+    {
+	"flex.messaging.messages.AcknowledgeMessageExt",
+	flex_parse_acknowledgemessageext,
+	flex_free_acknowledgemessageext,
+	flex_dump_acknowledgemessageext
+    },
+    {
+	"DSA",
+	flex_parse_asyncmessageext,
+	flex_free_asyncmessageext,
+	flex_dump_asyncmessageext
+    },
+    {
+	"flex.messaging.messages.AsyncMessageExt",
+	flex_parse_asyncmessageext,
+	flex_free_asyncmessageext,
+	flex_dump_asyncmessageext
+    },
+    {
+	"DSC",
+	flex_parse_commandmessageext,
+	flex_free_commandmessageext,
+	flex_dump_commandmessageext
+    },
+    {
+	"flex.messaging.messages.CommandMessageExt",
+	flex_parse_commandmessageext,
+	flex_free_commandmessageext,
+	flex_dump_commandmessageext
+    },
+    {
+	"flex.messaging.io.ArrayCollection",
+	flex_parse_arraycollection,
+	flex_free_arraycollection,
+	flex_dump_arraycollection
+    },
 #endif
     {NULL, NULL, NULL}
 };
@@ -653,8 +688,8 @@ AMF3Value amf3_parse_object(struct amf3_parse_context *c) {
 	}
 	amf3_ref_table_push(c->object_refs, obj);
 
-	const struct amf3_plugin_parser *pp = amf3__find_plugin_parser(classname);
-	if (pp) {
+	const struct amf3_plugin_parser *pp;
+	if ((pp = amf3__find_plugin_parser(classname)) != NULL) {
 	    if (pp->handler(c, classname,
 			&obj->v.object.m.external_ctx) != 0) {
 		LOG(LOG_ERROR, "%s: external parser of type '%s' returns error\n",
@@ -806,4 +841,129 @@ void amf3_parse_context_free(AMF3ParseContext c) {
     if (c->traits_refs)
 	amf3_ref_table_free(c->traits_refs);
     free(c);
+}
+
+void amf3__print_indent(int indent) {
+    int i;
+    for (i = 0; i < indent; i++)
+	fprintf(stderr, "  ");
+}
+
+void amf3_dump_value(AMF3Value v, int depth);
+
+static void *amf3__dump_kv(
+	List list, int idx, void *INLIST, void *DEPTH) {
+    struct amf3_kv *kv = (struct amf3_kv *)INLIST;
+    int depth = *((int *)DEPTH);
+    amf3__print_indent(depth);
+    fprintf(stderr, "\"%s\": ", amf3_string_cstr(kv->key));
+    amf3_dump_value(kv->value, depth + 1);
+    return NULL;
+}
+
+static void *amf3__dump_v(
+	List list, int idx, void *value, void *DEPTH) {
+    int depth = *((int *)DEPTH);
+    amf3__print_indent(depth);
+    fprintf(stderr, "[%d] ", idx);
+    amf3_dump_value((AMF3Value)value, depth + 1);
+    return NULL;
+}
+
+void amf3_dump_value(AMF3Value v, int depth) {
+    FILE *fp = stderr;
+    static const char *typenames[] = {
+	"Undefined", "Null", "False", "True", "Integer",
+	"Double", "String", "XmlDoc", "Date", "Array",
+	"Object", "Xml", "ByteArray"
+    };
+    if (v->type <= AMF3_BYTEARRAY)
+	fprintf(fp, "(%s)", typenames[(int)v->type]);
+    switch (v->type) {
+	case AMF3_UNDEFINED:
+	case AMF3_NULL:
+	case AMF3_FALSE:
+	case AMF3_TRUE:
+	    fprintf(fp, "\n");
+	    break;
+
+	case AMF3_INTEGER:
+	    fprintf(fp, " %d\n", v->v.integer);
+	    break;
+
+	case AMF3_DOUBLE:
+	    fprintf(fp, " %f\n", v->v.real);
+	    break;
+
+	case AMF3_STRING:
+	case AMF3_XMLDOC:
+	case AMF3_XML:
+	case AMF3_BYTEARRAY:
+	    fprintf(fp, " %d \"", v->v.binary.length);
+	    fwrite(v->v.binary.data, v->v.binary.length, 1, fp);
+	    fprintf(fp, "\"\n");
+	    break;
+
+	case AMF3_DATE:
+	    fprintf(fp, " %f\n", v->v.real);
+	    break;
+
+	case AMF3_ARRAY:
+	    {
+		int nxdepth = depth + 1;
+		fprintf(fp, "\n");
+		amf3__print_indent(depth);
+		fprintf(fp, "(assoc)\n");
+		list_foreach(v->v.array.assoc_list, amf3__dump_kv, &nxdepth);
+		list_foreach(v->v.array.dense_list, amf3__dump_v, &depth);
+	    }
+	    break;
+
+	case AMF3_OBJECT:
+	    {
+		AMF3Value traits = v->v.object.traits;
+		fprintf(fp, "\n");
+		amf3__print_indent(depth);
+		amf3_dump_value(traits, depth);
+
+		if (traits->v.traits.externalizable) {
+		    const struct amf3_plugin_parser *pp =
+			amf3__find_plugin_parser(traits->v.traits.type);
+		    if (pp && pp->dumpfunc)
+			pp->dumpfunc(v->v.object.m.external_ctx, depth);
+		    else {
+			amf3__print_indent(depth);
+			fprintf(fp, "(No dump handler defined)\n");
+		    }
+		} else {
+		    int i;
+		    for (i = 0; i < traits->v.traits.nmemb; i++) {
+			amf3__print_indent(depth);
+			fprintf(fp, "\"%s\": ",
+				amf3_string_cstr(traits->v.traits.members[i]));
+			amf3_dump_value(
+				v->v.object.m.i.member_values[i], depth + 1);
+		    }
+
+		    if (traits->v.traits.dynamic) {
+			amf3__print_indent(depth);
+			fprintf(fp, "(dynmember)\n");
+			int nxdepth = depth + 2;
+			list_foreach(v->v.object.m.i.dynmemb_list,
+				amf3__dump_kv, &nxdepth);
+		    }
+		}
+	    }
+	    break;
+
+	case AMF3_TRAITS:
+	    fprintf(fp, "<traits> [%s%s] %s\n",
+		    v->v.traits.externalizable ? "E" : " ",
+		    v->v.traits.dynamic ? "D" : " ",
+		    amf3_string_cstr(v->v.traits.type));
+	    break;
+
+	default:
+	    LOG(LOG_ERROR, "(Unknown %02X)\n", v->type);
+    }
 }

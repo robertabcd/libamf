@@ -104,11 +104,13 @@ typedef struct amf3_parse_context *AMF3ParseContext;
 typedef int (* AMF3PluginParserParseFunc) (
 	AMF3ParseContext c, AMF3Value classname, void **external_ctx);
 typedef void (* AMF3PluginExternalObjectFreeFunc) (void *external_ctx);
+typedef void (* AMF3PluginExternalObjectDumpFunc) (void *external_ctx, int depth);
 
 struct amf3_plugin_parser {
     char *classname;
     AMF3PluginParserParseFunc handler;
     AMF3PluginExternalObjectFreeFunc freefunc;
+    AMF3PluginExternalObjectDumpFunc dumpfunc;
 };
 
 AMF3Value amf3_retain(AMF3Value v);
@@ -154,5 +156,8 @@ AMF3Value amf3_parse_value(struct amf3_parse_context *c);
 
 AMF3ParseContext amf3_parse_context_new(const char *data, int length);
 void amf3_parse_context_free(AMF3ParseContext c);
+
+void amf3_dump_value(AMF3Value v, int depth);
+void amf3__print_indent(int indent);
 
 #endif
