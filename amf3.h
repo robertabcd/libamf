@@ -99,9 +99,10 @@ struct amf3_parse_context {
 };
 
 typedef struct amf3_value *AMF3Value;
+typedef struct amf3_parse_context *AMF3ParseContext;
 /* returns 0 if success; otherwise, failed. */
 typedef int (* AMF3PluginParserParseFunc) (
-	struct amf3_parse_context *c, AMF3Value classname, void **external_ctx);
+	AMF3ParseContext c, AMF3Value classname, void **external_ctx);
 
 struct amf3_plugin_parser {
     char *classname;

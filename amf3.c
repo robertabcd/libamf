@@ -4,11 +4,19 @@
 #include <string.h>
 #include "amf3.h"
 
+#ifdef HAVE_FLEX_COMMON_OBJECTS
+#   include "flex.h"
+#endif
+
 static const struct amf3_plugin_parser g_plugin_parsers[] = {
-#ifdef FLEX_COMMON_OBJECTS
-    {"DSK", flex_parse_dsk},
-    {"DSA", flex_parse_dsa},
-    {"DSC", flex_parse_dsc},
+#ifdef HAVE_FLEX_COMMON_OBJECTS
+    {"DSK", flex_parse_acknowledgemessageext},
+    {"flex.messaging.messages.AcknowledgeMessageExt", flex_parse_acknowledgemessageext},
+    {"DSA", flex_parse_asyncmessageext},
+    {"flex.messaging.messages.AsyncMessageExt", flex_parse_asyncmessageext},
+    {"DSC", flex_parse_commandmessageext},
+    {"flex.messaging.messages.CommandMessageExt", flex_parse_commandmessageext},
+    {"flex.messaging.io.ArrayCollection", flex_parse_arraycollection},
 #endif
     {NULL, NULL}
 };
