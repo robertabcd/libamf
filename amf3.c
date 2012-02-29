@@ -513,10 +513,8 @@ AMF3Value amf3_parse_object(struct amf3_parse_context *c) {
 		amf3_string_cstr(classname));
     } else {
 	classname = amf3_parse_string(c);
-	if (!classname) {
-	    amf3_release(traits);
+	if (!classname)
 	    return NULL;
-	}
 
 	if (!external) {
 	    dynamic = (ref >> 3) & 1;
