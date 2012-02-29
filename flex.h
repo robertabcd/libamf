@@ -30,6 +30,7 @@ struct flex_abstractmessage {
     AMF3Value client_id_bytes;
     AMF3Value message_id_bytes;
 };
+typedef struct flex_abstractmessage Flex_AbstractMessage;
 
 /* AsyncMessage */
 #define CORRELATION_ID_FLAG	    (0x01)
@@ -40,20 +41,22 @@ struct flex_asyncmessage {
     AMF3Value correlation_id;
     AMF3Value correlation_id_bytes;
 };
+typedef struct flex_asyncmessage Flex_AsyncMessage;
 
 /* AsyncMessageExt */
-#define flex_asyncmessageext flex_asyncmessage
+typedef Flex_AsyncMessage Flex_AsyncMessageExt;
 
 /* AcknowledgeMessage */
 struct flex_ackowledgemessage {
     struct flex_asyncmessage *am;
 };
+typedef struct flex_ackowledgemessage Flex_AcknowledgeMessage;
 
 /* AcknowledgeMessageExt */
-#define flex_ackowledgemessageext flex_ackowledgemessage
+typedef Flex_AcknowledgeMessage Flex_AcknowledgeMessageExt;
 
 /* ErrorMessage */
-#define flex_errormessage flex_ackowledgemessage
+typedef Flex_AcknowledgeMessage Flex_ErrorMessage;
 
 /* CommandMessage */
 #define OPERATION_FLAG	(0x01)
@@ -61,30 +64,34 @@ struct flex_commandmessage {
     struct flex_asyncmessage *am;
     AMF3Value operation;
 };
+typedef struct flex_commandmessage Flex_CommandMessage;
 
 /* CommandMessageExt */
-#define flex_commandmessageext flex_commandmessage
+typedef Flex_CommandMessage Flex_CommandMessageExt;
 
 /* ArrayCollection */
 struct flex_arraycollection {
     AMF3Value source;
 };
+typedef struct flex_arraycollection Flex_ArrayCollection;
 
 /* ArrayList */
-#define flex_arraylist flex_arraycollection
+typedef Flex_ArrayCollection Flex_ArrayList;
 
 /* ObjectProxy */
 struct flex_objectproxy {
     AMF3Value object;
 };
+typedef struct flex_objectproxy Flex_ObjectProxy;
 
 /* ManagedObjectProxy */
-#define flex_managedobjectproxy flex_objectproxy
+typedef Flex_ObjectProxy Flex_ManagedObjectProxy;
 
 /* SerializationProxy */
 struct flex_serializationproxy {
     AMF3Value default_instance;
 };
+typedef struct flex_serializationproxy Flex_SerializationProxy;
 
 
 int flex_parse_abstractmessage(
@@ -113,4 +120,18 @@ int flex_parse_managedobjectproxy(
 	AMF3ParseContext c, AMF3Value classname, void **external_ctx);
 int flex_parse_serializationproxy(
 	AMF3ParseContext c, AMF3Value classname, void **external_ctx);
+
+void flex_free_abstractmessage(void *am);
+void flex_free_asyncmessage(void *am);
+void flex_free_asyncmessageext(void *am);
+void flex_free_acknowledgemessage(void *am);
+void flex_free_acknowledgemessageext(void *am);
+void flex_free_errormessage(void *em);
+void flex_free_commandmessage(void *cm);
+void flex_free_commandmessageext(void *cm);
+void flex_free_arraycollection(void *ac);
+void flex_free_arraylist(void *al);
+void flex_free_objectproxy(void *op);
+void flex_free_managedobjectproxy(void *mop);
+void flex_free_serializationproxy(void *sp);
 #endif

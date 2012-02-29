@@ -103,10 +103,12 @@ typedef struct amf3_parse_context *AMF3ParseContext;
 /* returns 0 if success; otherwise, failed. */
 typedef int (* AMF3PluginParserParseFunc) (
 	AMF3ParseContext c, AMF3Value classname, void **external_ctx);
+typedef void (* AMF3PluginExternalObjectFreeFunc) (void *external_ctx);
 
 struct amf3_plugin_parser {
     char *classname;
     AMF3PluginParserParseFunc handler;
+    AMF3PluginExternalObjectFreeFunc freefunc;
 };
 
 AMF3Value amf3_retain(AMF3Value v);

@@ -61,7 +61,7 @@ static int flex_flags_countbits(struct flex_flags *ff) {
 
 int flex_parse_abstractmessage(
 	AMF3ParseContext c, AMF3Value classname, void **external_ctx) {
-    struct flex_abstractmessage *am = CALLOC(1, struct flex_abstractmessage);
+    Flex_AbstractMessage *am = CALLOC(1, Flex_AbstractMessage);
     if (!am)
 	return -1;
 
@@ -72,6 +72,8 @@ int flex_parse_abstractmessage(
 	am->body = amf3_parse_value(c);
     if (flex_flags_toggle(&ff, CLIENT_ID_FLAG))
 	am->client_id = amf3_parse_value(c);
+    if (flex_flags_toggle(&ff, DESTINATION_FLAG))
+	am->destination = amf3_parse_value(c);
     if (flex_flags_toggle(&ff, HEADERS_FLAG))
 	am->headers = amf3_parse_value(c);
     if (flex_flags_toggle(&ff, MESSAGE_ID_FLAG))
@@ -96,9 +98,32 @@ int flex_parse_abstractmessage(
     return 0;
 }
 
+void flex_free_abstractmessage(void *AM) {
+    Flex_AbstractMessage *am = (Flex_AbstractMessage *)AM;
+    if (am->body)
+	amf3_release(am->body);
+    if (am->client_id)
+	amf3_release(am->client_id);
+    if (am->destination)
+	amf3_release(am->destination);
+    if (am->headers)
+	amf3_release(am->headers);
+    if (am->message_id)
+	amf3_release(am->message_id);
+    if (am->timestamp)
+	amf3_release(am->timestamp);
+    if (am->ttl)
+	amf3_release(am->ttl);
+    if (am->client_id_bytes)
+	amf3_release(am->client_id_bytes);
+    if (am->message_id_bytes)
+	amf3_release(am->message_id_bytes);
+    free(am);
+}
+
 int flex_parse_asyncmessage(
 	AMF3ParseContext c, AMF3Value classname, void **external_ctx) {
-    struct flex_asyncmessage *am = CALLOC(1, struct flex_asyncmessage);
+    Flex_AsyncMessage *am = CALLOC(1, Flex_AsyncMessage);
     if (!am)
 	return -1;
 
@@ -124,14 +149,28 @@ int flex_parse_asyncmessage(
     return 0;
 }
 
+void flex_free_asyncmessage(void *AM) {
+    Flex_AsyncMessage *am = (Flex_AsyncMessage *)AM;
+    flex_free_abstractmessage(am->am);
+    if (am->correlation_id)
+	amf3_release(am->correlation_id);
+    if (am->correlation_id_bytes)
+	amf3_release(am->correlation_id_bytes);
+    free(am);
+}
+
 int flex_parse_asyncmessageext(
 	AMF3ParseContext c, AMF3Value classname, void **external_ctx) {
     return flex_parse_asyncmessage(c, classname, external_ctx);
 }
 
+void flex_free_asyncmessageext(void *am) {
+    flex_free_asyncmessage((Flex_AsyncMessage *)am);
+}
+
 int flex_parse_acknowledgemessage(
 	AMF3ParseContext c, AMF3Value classname, void **external_ctx) {
-    struct flex_ackowledgemessage *am = CALLOC(1, struct flex_ackowledgemessage);
+    Flex_AcknowledgeMessage *am = CALLOC(1, Flex_AcknowledgeMessage);
     if (!am)
 	return -1;
 
@@ -154,9 +193,19 @@ int flex_parse_acknowledgemessage(
     return 0;
 }
 
+void flex_free_acknowledgemessage(void *AM) {
+    Flex_AcknowledgeMessage *am = (Flex_AcknowledgeMessage *)AM;
+    flex_free_asyncmessage(am->am);
+    free(am);
+}
+
 int flex_parse_acknowledgemessageext(
 	AMF3ParseContext c, AMF3Value classname, void **external_ctx) {
     return flex_parse_acknowledgemessage(c, classname, external_ctx);
+}
+
+void flex_free_acknowledgemessageext(void *am) {
+    flex_free_acknowledgemessage((Flex_AcknowledgeMessageExt *)am);
 }
 
 int flex_parse_errormessage(
@@ -164,9 +213,13 @@ int flex_parse_errormessage(
     return flex_parse_acknowledgemessage(c, classname, external_ctx);
 }
 
+void flex_free_errormessage(void *em) {
+    flex_free_acknowledgemessage((Flex_ErrorMessage *)em);
+}
+
 int flex_parse_commandmessage(
 	AMF3ParseContext c, AMF3Value classname, void **external_ctx) {
-    struct flex_commandmessage *am = CALLOC(1, struct flex_commandmessage);
+    Flex_CommandMessage *am = CALLOC(1, Flex_CommandMessage);
     if (!am)
 	return -1;
 
@@ -190,14 +243,25 @@ int flex_parse_commandmessage(
     return 0;
 }
 
+void flex_free_commandmessage(void *CM) {
+    Flex_CommandMessage *cm = (Flex_CommandMessage *)CM;
+    flex_free_asyncmessage(cm->am);
+    amf3_release(cm->operation);
+    free(cm);
+}
+
 int flex_parse_commandmessageext(
 	AMF3ParseContext c, AMF3Value classname, void **external_ctx) {
     return flex_parse_commandmessage(c, classname, external_ctx);
 }
 
+void flex_free_commandmessageext(void *cm) {
+    flex_free_commandmessage((Flex_CommandMessageExt *)cm);
+}
+
 int flex_parse_arraycollection(
 	AMF3ParseContext c, AMF3Value classname, void **external_ctx) {
-    struct flex_arraycollection *am = CALLOC(1, struct flex_arraycollection);
+    Flex_ArrayCollection *am = CALLOC(1, Flex_ArrayCollection);
     if (!am)
 	return -1;
     am->source = amf3_parse_value(c);
@@ -205,14 +269,24 @@ int flex_parse_arraycollection(
     return 0;
 }
 
+void flex_free_arraycollection(void *AC) {
+    Flex_ArrayCollection *ac = (Flex_ArrayCollection *)AC;
+    amf3_release(ac->source);
+    free(ac);
+}
+
 int flex_parse_arraylist(
 	AMF3ParseContext c, AMF3Value classname, void **external_ctx) {
     return flex_parse_arraycollection(c, classname, external_ctx);
 }
 
+void flex_free_arraylist(void *al) {
+    flex_free_arraycollection((Flex_ArrayList *)al);
+}
+
 int flex_parse_objectproxy(
 	AMF3ParseContext c, AMF3Value classname, void **external_ctx) {
-    struct flex_objectproxy *am = CALLOC(1, struct flex_objectproxy);
+    Flex_ObjectProxy *am = CALLOC(1, Flex_ObjectProxy);
     if (!am)
 	return -1;
     am->object = amf3_parse_value(c);
@@ -220,17 +294,33 @@ int flex_parse_objectproxy(
     return 0;
 }
 
+void flex_free_objectproxy(void *OP) {
+    Flex_ObjectProxy *op = (Flex_ObjectProxy *)OP;
+    amf3_release(op->object);
+    free(op);
+}
+
 int flex_parse_managedobjectproxy(
 	AMF3ParseContext c, AMF3Value classname, void **external_ctx) {
     return flex_parse_objectproxy(c, classname, external_ctx);
 }
 
+void flex_free_managedobjectproxy(void *mop) {
+    flex_free_objectproxy((Flex_ManagedObjectProxy *)mop);
+}
+
 int flex_parse_serializationproxy(
 	AMF3ParseContext c, AMF3Value classname, void **external_ctx) {
-    struct flex_serializationproxy *am = CALLOC(1, struct flex_serializationproxy);
+    Flex_SerializationProxy *am = CALLOC(1, Flex_SerializationProxy);
     if (!am)
 	return -1;
     am->default_instance = amf3_parse_value(c);
     *external_ctx = am;
     return 0;
+}
+
+void flex_free_serializationproxy(void *SP) {
+    Flex_SerializationProxy *sp = (Flex_SerializationProxy *)SP;
+    amf3_release(sp->default_instance);
+    free(sp);
 }

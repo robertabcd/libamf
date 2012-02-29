@@ -11,15 +11,15 @@
 
 static const struct amf3_plugin_parser g_plugin_parsers[] = {
 #ifdef HAVE_FLEX_COMMON_OBJECTS
-    {"DSK", flex_parse_acknowledgemessageext},
-    {"flex.messaging.messages.AcknowledgeMessageExt", flex_parse_acknowledgemessageext},
-    {"DSA", flex_parse_asyncmessageext},
-    {"flex.messaging.messages.AsyncMessageExt", flex_parse_asyncmessageext},
-    {"DSC", flex_parse_commandmessageext},
-    {"flex.messaging.messages.CommandMessageExt", flex_parse_commandmessageext},
-    {"flex.messaging.io.ArrayCollection", flex_parse_arraycollection},
+    {"DSK", flex_parse_acknowledgemessageext, flex_free_acknowledgemessageext},
+    {"flex.messaging.messages.AcknowledgeMessageExt", flex_parse_acknowledgemessageext, flex_free_acknowledgemessageext},
+    {"DSA", flex_parse_asyncmessageext, flex_free_asyncmessageext},
+    {"flex.messaging.messages.AsyncMessageExt", flex_parse_asyncmessageext, flex_free_asyncmessageext},
+    {"DSC", flex_parse_commandmessageext, flex_free_commandmessageext},
+    {"flex.messaging.messages.CommandMessageExt", flex_parse_commandmessageext, flex_free_commandmessageext},
+    {"flex.messaging.io.ArrayCollection", flex_parse_arraycollection, flex_free_arraycollection},
 #endif
-    {NULL, NULL}
+    {NULL, NULL, NULL}
 };
 
 #define ALLOC(type, nobjs) ((type *)malloc(sizeof(type) * nobjs))
@@ -50,8 +50,94 @@ static struct amf3_value *amf3__new_value(char type) {
     return v;
 }
 
+static void *amf3__kv_release_cb(
+	List list, int idx, void *INLIST, void *unused) {
+    struct amf3_kv *inlist = (struct amf3_kv *)INLIST;
+    amf3_release(inlist->key);
+    amf3_release(inlist->value);
+    return NULL;
+}
+
+static void *amf3__release_cb(
+	List list, int idx, void *INLIST, void *unused) {
+    amf3_release((AMF3Value)INLIST);
+    return NULL;
+}
+
+static const struct amf3_plugin_parser *
+amf3__find_plugin_parser(AMF3Value classname) {
+    int i;
+    for (i = 0; g_plugin_parsers[i].classname; i++)
+	if (strcmp(g_plugin_parsers[i].classname,
+		    amf3_string_cstr(classname)) == 0)
+	    return &g_plugin_parsers[i];
+    return NULL;
+}
+
 static void amf3__free_value(struct amf3_value *v) {
-    // TODO
+    switch (v->type) {
+	case AMF3_UNDEFINED:
+	case AMF3_NULL:
+	case AMF3_FALSE:
+	case AMF3_TRUE:
+	case AMF3_INTEGER:
+	case AMF3_DOUBLE:
+	case AMF3_DATE:
+	    break;
+
+	case AMF3_STRING:
+	case AMF3_XMLDOC:
+	case AMF3_XML:
+	case AMF3_BYTEARRAY:
+	    free(v->v.binary.data);
+	    break;
+
+	case AMF3_ARRAY:
+	    list_foreach(v->v.array.assoc_list, amf3__kv_release_cb, NULL);
+	    list_foreach(v->v.array.dense_list, amf3__release_cb, NULL);
+	    list_free(v->v.array.assoc_list);
+	    list_free(v->v.array.dense_list);
+	    break;
+
+	case AMF3_OBJECT:
+	    if (v->v.object.traits->v.traits.externalizable) {
+		const struct amf3_plugin_parser *pp = amf3__find_plugin_parser(
+			v->v.object.traits->v.traits.type);
+		if (pp)
+		    pp->freefunc(v->v.object.m.external_ctx);
+		else {
+		    LOG(LOG_ERROR, "%s: cannot free external object of type '%s'\n",
+			    amf3_string_cstr(v->v.object.traits->v.traits.type));
+		    return;
+		}
+	    } else {
+		int i;
+		for (i = 0; i < v->v.object.traits->v.traits.nmemb; i++)
+		    if (v->v.object.m.i.member_values[i])
+			amf3_release(v->v.object.m.i.member_values[i]);
+		free(v->v.object.m.i.member_values);
+
+		list_foreach(v->v.object.m.i.dynmemb_list,
+			amf3__kv_release_cb, NULL);
+		list_free(v->v.object.m.i.dynmemb_list);
+	    }
+
+	case AMF3_TRAITS:
+	    amf3_release(v->v.traits.type);
+	    if (v->v.traits.nmemb > 0) {
+		amf3_release(v);
+		int i;
+		for (i = 0; i < v->v.traits.nmemb; i++)
+		    amf3_release(v->v.traits.members[i]);
+		free(v->v.traits.members);
+	    }
+	    break;
+
+	default:
+	    LOG(LOG_ERROR, "%s: unknown type %02X\n", __func__, v->type);
+	    return;
+    }
+    free(v);
 }
 
 AMF3Value amf3_retain(AMF3Value v) {
@@ -377,8 +463,12 @@ struct amf3_ref_table *amf3_ref_table_new() {
 
 void amf3_ref_table_free(struct amf3_ref_table *r) {
     assert(r);
-    if (r->refs)
+    if (r->refs) {
+	int i;
+	for (i = 0; i < r->nref; i++)
+	    amf3_release(r->refs[i]);
 	free(r->refs);
+    }
     free(r);
 }
 
@@ -386,7 +476,7 @@ AMF3Value amf3_ref_table_push(struct amf3_ref_table *r, AMF3Value v) {
     assert(r);
     if (r->nref == r->nalloc)
 	assert(r->refs = realloc(r->refs,
-		    (r->nalloc <<= 1) * sizeof(AMF3Value *)));
+		    (r->nalloc <<= 1) * sizeof(AMF3Value)));
     return (r->refs[r->nref++] = amf3_retain(v));
 }
 
@@ -513,10 +603,8 @@ AMF3Value amf3_parse_object(struct amf3_parse_context *c) {
 		amf3_string_cstr(classname));
     } else {
 	classname = amf3_parse_string(c);
-	if (!classname) {
-	    amf3_release(traits);
+	if (!classname)
 	    return NULL;
-	}
 
 	if (!external) {
 	    dynamic = (ref >> 3) & 1;
@@ -558,26 +646,27 @@ AMF3Value amf3_parse_object(struct amf3_parse_context *c) {
 	obj = amf3__new_object_external_direct(traits, NULL);
 	if (!obj) {
 	    amf3_release(traits);
+	    amf3_release(classname);
 	    return NULL;
 	}
 	amf3_ref_table_push(c->object_refs, obj);
 
-	int i;
-	for (i = 0; g_plugin_parsers[i].classname; i++)
-	    if (strcmp(g_plugin_parsers[i].classname,
-			amf3_string_cstr(classname)) == 0) {
-		if (g_plugin_parsers[i].handler(c, classname,
-			    &obj->v.object.m.external_ctx) != 0) {
-		    amf3_release(traits);
-		    amf3_release(obj);
-		    return NULL;
-		}
-		break;
+	const struct amf3_plugin_parser *pp = amf3__find_plugin_parser(classname);
+	if (pp) {
+	    if (pp->handler(c, classname,
+			&obj->v.object.m.external_ctx) != 0) {
+		LOG(LOG_ERROR, "%s: external parser of type '%s' returns error\n",
+			__func__, amf3_string_cstr(classname));
+		amf3_release(traits);
+		amf3_release(classname);
+		amf3_release(obj);
+		return NULL;
 	    }
-	if (!g_plugin_parsers[i].classname) {
+	} else {
 	    LOG(LOG_ERROR, "%s: cannot parse type '%s'\n",
 		    __func__, amf3_string_cstr(classname));
 	    amf3_release(traits);
+	    amf3_release(classname);
 	    amf3_release(obj);
 	    return NULL;
 	}
@@ -585,6 +674,7 @@ AMF3Value amf3_parse_object(struct amf3_parse_context *c) {
 	obj = amf3__new_object_direct(traits, NULL, list_new());
 	if (!obj) {
 	    amf3_release(traits);
+	    amf3_release(classname);
 	    return NULL;
 	}
 	amf3_ref_table_push(c->object_refs, obj);
@@ -598,6 +688,7 @@ AMF3Value amf3_parse_object(struct amf3_parse_context *c) {
 	    AMF3Value value = amf3_parse_value(c);
 	    if (!value) {
 		amf3_release(traits);
+		amf3_release(classname);
 		amf3_release(obj);
 		return NULL;
 	    }
@@ -611,15 +702,19 @@ AMF3Value amf3_parse_object(struct amf3_parse_context *c) {
 		AMF3Value value = amf3_parse_value(c);
 		if (!value) {
 		    amf3_release(traits);
+		    amf3_release(classname);
 		    amf3_release(obj);
 		    amf3_release(key);
 		    return NULL;
 		}
 		amf3_object_prop_set(obj, key, value);
 		amf3_release(key);
+		amf3_release(value);
 	    }
 	}
     }
+    amf3_release(traits);
+    amf3_release(classname);
     return obj;
 }
 
@@ -708,4 +803,5 @@ void amf3_parse_context_free(AMF3ParseContext c) {
 	amf3_ref_table_free(c->string_refs);
     if (c->traits_refs)
 	amf3_ref_table_free(c->traits_refs);
+    free(c);
 }
