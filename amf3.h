@@ -1,6 +1,19 @@
 #ifndef _AMF3_H
 #   define _AMF3_H
 
+#include <stdint.h>
+#include <endian.h>
+#if __BYTE_ORDER == __LITTLE_ENDIAN
+#include <byteswap.h>
+#   define NTOH64(x) bswap_64(x)
+#   define NTOH32(x) bswap_32(x)
+#   define NTOH16(x) bswap_16(x)
+#else
+#   define NTOH64(x) (x)
+#   define NTOH32(x) (x)
+#   define NTOH16(x) (x)
+#endif
+
 #include "list.h"
 
 #define AMF3_UNDEFINED	(0x00)
@@ -35,6 +48,7 @@ struct amf3_array {
 };
 
 struct amf3_traits {
+    struct amf3_value *type;
     char externalizable;
     char dynamic;
     int nmemb;
@@ -42,7 +56,6 @@ struct amf3_traits {
 };
 
 struct amf3_object {
-    struct amf3_value *type;
     struct amf3_value *traits;
     union {
 	struct {
@@ -79,7 +92,25 @@ struct amf3_kv {
     struct amf3_value *value;
 };
 
+#define AMF3_REF_TABLE_PREALLOC (128)
+struct amf3_ref_table {
+    struct amf3_value **refs;
+    int nref;
+    int nalloc;
+};
+
+struct amf3_parse_context {
+    const char *data;
+    int length;
+    const char *p;
+    int left;
+    struct amf3_ref_table *object_refs;
+    struct amf3_ref_table *string_refs;
+    struct amf3_ref_table *traits_refs;
+};
 
 typedef struct amf3_value *AMF3Value;
+
+AMF3Value amf3_parse_value(struct amf3_parse_context *c);
 
 #endif
