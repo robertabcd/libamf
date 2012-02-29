@@ -755,6 +755,19 @@ AMF3Value amf3_parse_object(struct amf3_parse_context *c) {
     return obj;
 }
 
+static double amf3__read_double(struct amf3_parse_context *c) {
+    union {
+	uint64_t i;
+	double d;
+    } conv;
+    if (c->left < sizeof(uint64_t))
+	return 0.0;
+    conv.i = NTOH64(*((uint64_t *)c->p));
+    c->p += sizeof(uint64_t);
+    c->left -= sizeof(uint64_t);
+    return conv.d;
+}
+
 AMF3Value amf3_parse_value(struct amf3_parse_context *c) {
     assert(c->left > 0);
     char mark = *c->p++;
@@ -781,14 +794,7 @@ AMF3Value amf3_parse_value(struct amf3_parse_context *c) {
 	    }
 
 	case AMF3_DOUBLE:
-	    {
-		if (c->left < sizeof(uint64_t))
-		    return NULL;
-		uint64_t real = NTOH64(*((uint64_t *)c->p));
-		c->p += sizeof(uint64_t);
-		c->left -= sizeof(uint64_t);
-		return amf3_new_double(*((double *)&real));
-	    }
+	    return amf3_new_double(amf3__read_double(c));
 
 	case AMF3_STRING:
 	    return amf3_parse_string(c);
@@ -799,14 +805,7 @@ AMF3Value amf3_parse_value(struct amf3_parse_context *c) {
 	    return amf3__parse_binary_object(c, mark);
 
 	case AMF3_DATE:
-	    {
-		if (c->left < sizeof(uint64_t))
-		    return NULL;
-		uint64_t date = NTOH64(*((uint64_t *)c->p));
-		c->p += sizeof(uint64_t);
-		c->left -= sizeof(uint64_t);
-		return amf3_new_date(*((double *)&date));
-	    }
+	    return amf3_new_date(amf3__read_double(c));
 
 	case AMF3_ARRAY:
 	    return amf3_parse_array(c);
