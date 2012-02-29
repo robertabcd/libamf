@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdarg.h>
 #include "amf3.h"
 
 #ifdef HAVE_FLEX_COMMON_OBJECTS
@@ -22,6 +23,22 @@ static const struct amf3_plugin_parser g_plugin_parsers[] = {
 };
 
 #define ALLOC(type, nobjs) ((type *)malloc(sizeof(type) * nobjs))
+#define CALLOC(nobjs, type) ((type *)calloc(nobjs, sizeof(type)))
+
+#define LOG_ERROR (1)
+#define LOG_DEBUG (7)
+#ifndef DEBUG_LEVEL
+#   define DEBUG_LEVEL LOG_ERROR
+#endif
+
+static void LOG(int level, const char *fmt, ...) {
+    if (level <= DEBUG_LEVEL) {
+	va_list ap;
+	va_start(ap, fmt);
+	vfprintf(stderr, fmt, ap);
+	va_end(ap);
+    }
+}
 
 static struct amf3_value *amf3__new_value(char type) {
     struct amf3_value *v = ALLOC(struct amf3_value, 1);
@@ -139,6 +156,10 @@ const char *amf3_string_cstr(AMF3Value v) {
 
 static struct amf3_value *amf3__new_traits(AMF3Value type,
 	char externalizable, char dynamic, int nmemb) {
+    LOG(LOG_DEBUG, "[TRAITS][%s%s](%d)%s\n",
+	    externalizable ? "E" : " ",
+	    dynamic ? "D" : " ",
+	    nmemb, amf3_string_cstr(type));
     struct amf3_value *v = amf3__new_value(AMF3_TRAITS);
     if (v) {
 	v->v.traits.externalizable = externalizable;
@@ -222,6 +243,7 @@ AMF3Value amf3_array_assoc_get(AMF3Value a, AMF3Value key) {
 
 static AMF3Value amf3__new_object_direct(
 	AMF3Value traits, AMF3Value *members, List dynmemb_list) {
+    assert(traits->type == AMF3_TRAITS);
     AMF3Value v = amf3__new_value(AMF3_OBJECT);
     if (!v)
 	return NULL;
@@ -427,12 +449,14 @@ AMF3Value amf3_parse_array(struct amf3_parse_context *c) {
     if (!(len & 0x1))
 	return amf3_retain(amf3_ref_table_get(c->object_refs, len >> 1));
     len >>= 1;
+    LOG(LOG_DEBUG, "[ARRAY] length = %d\n", len);
 
     AMF3Value arr = amf3_new_array();
     if (!arr)
 	return NULL;
     amf3_ref_table_push(c->object_refs, arr);
 
+    LOG(LOG_DEBUG, "[ARRAY] parsing assoc part\n");
     AMF3Value key;
     while ((key = amf3_parse_string(c)) != NULL &&
 	    amf3_string_len(key) > 0) {
@@ -447,9 +471,12 @@ AMF3Value amf3_parse_array(struct amf3_parse_context *c) {
 	amf3_release(key);
 	amf3_release(value);
     }
+    if (key)
+	amf3_release(key);
 
     int i;
     for (i = 0; i < len; i++) {
+	LOG(LOG_DEBUG, "[ARRAY] parsing dense part #%d\n", i);
 	AMF3Value elem = amf3_parse_value(c);
 	if (!elem) {
 	    amf3_release(arr);
@@ -481,6 +508,9 @@ AMF3Value amf3_parse_object(struct amf3_parse_context *c) {
 	external = traits->v.traits.externalizable;
 	dynamic = traits->v.traits.dynamic;
 	nmemb = traits->v.traits.nmemb;
+
+	LOG(LOG_DEBUG, "[*TRAITS]{%d} %s\n", ref >> 2,
+		amf3_string_cstr(classname));
     } else {
 	classname = amf3_parse_string(c);
 	if (!classname) {
@@ -489,7 +519,7 @@ AMF3Value amf3_parse_object(struct amf3_parse_context *c) {
 	}
 
 	if (!external) {
-	    dynamic = ref >> 3;
+	    dynamic = (ref >> 3) & 1;
 	    nmemb = ref >> 4;
 	}
 
@@ -500,7 +530,7 @@ AMF3Value amf3_parse_object(struct amf3_parse_context *c) {
 	}
 
 	int i;
-	for (i = 0; i < ref; i++) {
+	for (i = 0; i < nmemb; i++) {
 	    AMF3Value key = amf3_parse_string(c);
 	    if (!key) {
 		amf3_release(traits);
@@ -510,8 +540,18 @@ AMF3Value amf3_parse_object(struct amf3_parse_context *c) {
 	    amf3__traits_member_set(traits, i, key);
 	    amf3_release(key);
 	}
+
+	// don't cache anonymous class
+	if (amf3_string_len(classname) > 0) {
+	    amf3_ref_table_push(c->traits_refs, traits);
+
+	    LOG(LOG_DEBUG, "[TRAITS]{%d}[%s%s] %s\n",
+		    c->traits_refs->nref - 1,
+		    external ? "E" : " ",
+		    dynamic ? "D" : " ",
+		    amf3_string_cstr(classname));
+	}
     }
-    amf3_ref_table_push(c->traits_refs, traits);
 
     AMF3Value obj;
     if (external) {
@@ -535,14 +575,14 @@ AMF3Value amf3_parse_object(struct amf3_parse_context *c) {
 		break;
 	    }
 	if (!g_plugin_parsers[i].classname) {
-	    fprintf(stderr, "%s: cannot parse type '%s'\n",
+	    LOG(LOG_ERROR, "%s: cannot parse type '%s'\n",
 		    __func__, amf3_string_cstr(classname));
 	    amf3_release(traits);
 	    amf3_release(obj);
 	    return NULL;
 	}
     } else {
-	obj = amf3__new_object_direct(traits, NULL, NULL);
+	obj = amf3__new_object_direct(traits, NULL, list_new());
 	if (!obj) {
 	    amf3_release(traits);
 	    return NULL;
@@ -551,6 +591,10 @@ AMF3Value amf3_parse_object(struct amf3_parse_context *c) {
 
 	int i, nmemb = traits->v.traits.nmemb;
 	for (i = 0; i < nmemb; i++) {
+	    LOG(LOG_DEBUG, "%s::%s\n",
+		    amf3_string_cstr(traits->v.traits.type),
+		    amf3_string_cstr(traits->v.traits.members[i]));
+
 	    AMF3Value value = amf3_parse_value(c);
 	    if (!value) {
 		amf3_release(traits);
@@ -560,18 +604,20 @@ AMF3Value amf3_parse_object(struct amf3_parse_context *c) {
 	    obj->v.object.m.i.member_values[i] = value;
 	}
 
-	AMF3Value key;
-	while ((key = amf3_parse_string(c)) != NULL &&
-		amf3_string_len(key) > 0) {
-	    AMF3Value value = amf3_parse_value(c);
-	    if (!value) {
-		amf3_release(traits);
-		amf3_release(obj);
+	if (dynamic) {
+	    AMF3Value key;
+	    while ((key = amf3_parse_string(c)) != NULL &&
+		    amf3_string_len(key) > 0) {
+		AMF3Value value = amf3_parse_value(c);
+		if (!value) {
+		    amf3_release(traits);
+		    amf3_release(obj);
+		    amf3_release(key);
+		    return NULL;
+		}
+		amf3_object_prop_set(obj, key, value);
 		amf3_release(key);
-		return NULL;
 	    }
-	    amf3_object_prop_set(obj, key, value);
-	    amf3_release(key);
 	}
     }
     return obj;
@@ -637,7 +683,29 @@ AMF3Value amf3_parse_value(struct amf3_parse_context *c) {
 	    return amf3_parse_object(c);
 
 	default:
-	    fprintf(stderr, "%s: unknown type %02X\n", __func__, mark);
+	    LOG(LOG_ERROR, "%s: unknown type %02X\n", __func__, mark);
 	    return NULL;
     }
+}
+
+AMF3ParseContext amf3_parse_context_new(const char *data, int length) {
+    AMF3ParseContext c = CALLOC(1, struct amf3_parse_context);
+    if (c) {
+	c->data = c->p = data;
+	c->length = c->left = length;
+	c->object_refs = amf3_ref_table_new();
+	c->string_refs = amf3_ref_table_new();
+	c->traits_refs = amf3_ref_table_new();
+    }
+    return c;
+}
+
+void amf3_parse_context_free(AMF3ParseContext c) {
+    assert(c);
+    if (c->object_refs)
+	amf3_ref_table_free(c->object_refs);
+    if (c->string_refs)
+	amf3_ref_table_free(c->string_refs);
+    if (c->traits_refs)
+	amf3_ref_table_free(c->traits_refs);
 }

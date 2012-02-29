@@ -150,4 +150,7 @@ AMF3Value amf3_parse_array(struct amf3_parse_context *c);
 AMF3Value amf3_parse_object(struct amf3_parse_context *c);
 AMF3Value amf3_parse_value(struct amf3_parse_context *c);
 
+AMF3ParseContext amf3_parse_context_new(const char *data, int length);
+void amf3_parse_context_free(AMF3ParseContext c);
+
 #endif
