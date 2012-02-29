@@ -99,7 +99,54 @@ struct amf3_parse_context {
 };
 
 typedef struct amf3_value *AMF3Value;
+/* returns 0 if success; otherwise, failed. */
+typedef int (* AMF3PluginParserParseFunc) (
+	struct amf3_parse_context *c, AMF3Value classname, void **external_ctx);
 
+struct amf3_plugin_parser {
+    char *classname;
+    AMF3PluginParserParseFunc handler;
+};
+
+AMF3Value amf3_retain(AMF3Value v);
+void amf3_release(AMF3Value v);
+AMF3Value amf3_new_undefined();
+AMF3Value amf3_new_null();
+AMF3Value amf3_new_false();
+AMF3Value amf3_new_true();
+AMF3Value amf3_new_integer(int value);
+AMF3Value amf3_new_double(double value);
+AMF3Value amf3_new_string(const char *string, int length);
+AMF3Value amf3_new_string_utf8(const char *utf8);
+AMF3Value amf3_new_xmldoc(const char *doc, int length);
+AMF3Value amf3_new_xml(const char *doc, int length);
+AMF3Value amf3_new_bytearray(const char *bytes, int length);
+AMF3Value amf3_new_date(double date);
+AMF3Value amf3_new_array();
+AMF3Value amf3_new_object(AMF3Value type, char dynamic,
+	AMF3Value *member_names, int nmemb);
+AMF3Value amf3_new_object_external(AMF3Value type, void *external_ctx);
+
+int amf3_string_cmp(AMF3Value a, AMF3Value b);
+int amf3_string_len(AMF3Value v);
+const char *amf3_string_cstr(AMF3Value v);
+
+void amf3_array_push(AMF3Value a, AMF3Value v);
+void amf3_array_assoc_set(AMF3Value a, AMF3Value key, AMF3Value value);
+AMF3Value amf3_array_assoc_get(AMF3Value a, AMF3Value key);
+
+AMF3Value amf3_object_prop_get(AMF3Value o, AMF3Value key);
+void amf3_object_prop_set(AMF3Value o, AMF3Value key, AMF3Value value);
+
+struct amf3_ref_table *amf3_ref_table_new();
+void amf3_ref_table_free(struct amf3_ref_table *r);
+AMF3Value amf3_ref_table_push(struct amf3_ref_table *r, AMF3Value v);
+AMF3Value amf3_ref_table_get(struct amf3_ref_table *r, int idx);
+
+int amf3_parse_u29(struct amf3_parse_context *c);
+AMF3Value amf3_parse_string(struct amf3_parse_context *c);
+AMF3Value amf3_parse_array(struct amf3_parse_context *c);
+AMF3Value amf3_parse_object(struct amf3_parse_context *c);
 AMF3Value amf3_parse_value(struct amf3_parse_context *c);
 
 #endif

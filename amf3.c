@@ -4,6 +4,15 @@
 #include <string.h>
 #include "amf3.h"
 
+static const struct amf3_plugin_parser g_plugin_parsers[] = {
+#ifdef FLEX_COMMON_OBJECTS
+    {"DSK", flex_parse_dsk},
+    {"DSA", flex_parse_dsa},
+    {"DSC", flex_parse_dsc},
+#endif
+    {NULL, NULL}
+};
+
 #define ALLOC(type, nobjs) ((type *)malloc(sizeof(type) * nobjs))
 
 static struct amf3_value *amf3__new_value(char type) {
@@ -113,6 +122,11 @@ int amf3_string_cmp(AMF3Value a, AMF3Value b) {
 int amf3_string_len(AMF3Value v) {
     assert(v && v->type == AMF3_STRING);
     return v->v.binary.length;
+}
+
+const char *amf3_string_cstr(AMF3Value v) {
+    assert(v && v->type == AMF3_STRING);
+    return v->v.binary.data;
 }
 
 static struct amf3_value *amf3__new_traits(AMF3Value type,
@@ -499,7 +513,26 @@ AMF3Value amf3_parse_object(struct amf3_parse_context *c) {
 	    return NULL;
 	}
 	amf3_ref_table_push(c->object_refs, obj);
-	// TODO
+
+	int i;
+	for (i = 0; g_plugin_parsers[i].classname; i++)
+	    if (strcmp(g_plugin_parsers[i].classname,
+			amf3_string_cstr(classname)) == 0) {
+		if (g_plugin_parsers[i].handler(c, classname,
+			    &obj->v.object.m.external_ctx) != 0) {
+		    amf3_release(traits);
+		    amf3_release(obj);
+		    return NULL;
+		}
+		break;
+	    }
+	if (!g_plugin_parsers[i].classname) {
+	    fprintf(stderr, "%s: cannot parse type '%s'\n",
+		    __func__, amf3_string_cstr(classname));
+	    amf3_release(traits);
+	    amf3_release(obj);
+	    return NULL;
+	}
     } else {
 	obj = amf3__new_object_direct(traits, NULL, NULL);
 	if (!obj) {
