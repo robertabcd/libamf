@@ -148,8 +148,9 @@ void amf3_array_push(AMF3Value a, AMF3Value v) {
 static void *amf3__kv_replace_cb(List list, int idx, struct amf3_kv *inlist, struct amf3_kv *repas) {
     if (amf3_string_cmp(inlist->key, repas->key) == 0) {
 	if (inlist->value != repas->value) {
+	    amf3_retain(repas->value);
 	    amf3_release(inlist->value);
-	    inlist->value = amf3_retain(repas->value);
+	    inlist->value = repas->value;
 	}
 	return repas; // a non-null pointer will do
     }
@@ -221,6 +222,37 @@ AMF3Value amf3_object_prop_get(AMF3Value o, AMF3Value key) {
     if (traits->dynamic)
 	return list_foreach(o->v.object.m.i.dynmemb_list, amf3__kv_get_cb, key);
     return NULL;
+}
+
+void amf3_object_prop_set(AMF3Value o, AMF3Value key, AMF3Value value) {
+    assert(o && o->type == AMF3_OBJECT);
+    assert(key && key->type == AMF3_STRING);
+    assert(value);
+    struct amf3_traits *traits = &o->v.object.traits->v.traits;
+    if (traits->externalizable) {
+	// TODO
+	return NULL;
+    }
+    if (traits->nmemb > 0) {
+	AMF3Value **member_values = o->v.object.m.i.member_values;
+	AMF3Value *member_names = traits->members;
+	int i;
+	for (i = 0; i < traits->nmemb; i++)
+	    if (amf3_string_cmp(key, traits->members[i]) == 0) {
+		if (member_values[i] == NULL)
+		    member_values[i] = amf3_retain(value);
+		else if (member_values[i] != value) {
+		    amf3_retain(value);
+		    amf3_release(member_values[i]);
+		    member_values[i] = value;
+		}
+		return;
+	    }
+    }
+    if (traits->dynamic) {
+	struct amf3_kv kv = {key, value};
+	list_foreach(o->v.object.m.i.dynmemb_list, amf3__kv_replace_cb, &kv);
+    }
 }
 
 AMF3Value amf3_new_object_external(AMF3Value type, void *external_ctx) {
