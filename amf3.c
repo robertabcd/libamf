@@ -163,7 +163,9 @@ void amf3_array_push(AMF3Value a, AMF3Value v) {
     list_push(a->v.array.dense_list, amf3_retain(v));
 }
 
-static void *amf3__kv_replace_cb(List list, int idx, struct amf3_kv *inlist, struct amf3_kv *repas) {
+static void *amf3__kv_replace_cb(List list, int idx, void *INL, void *REP) {
+    struct amf3_kv *inlist = (struct amf3_kv *)INL;
+    struct amf3_kv *repas = (struct amf3_kv *)REP;
     if (amf3_string_cmp(inlist->key, repas->key) == 0) {
 	if (inlist->value != repas->value) {
 	    amf3_retain(repas->value);
@@ -175,7 +177,9 @@ static void *amf3__kv_replace_cb(List list, int idx, struct amf3_kv *inlist, str
     return NULL;
 }
 
-static void *amf3__kv_get_cb(List list, int idx, struct amf3_kv *inlist, AMF3Value key) {
+static void *amf3__kv_get_cb(List list, int idx, void *INLIST, void *KEY) {
+    struct amf3_kv *inlist = (struct amf3_kv *)INLIST;
+    AMF3Value key = (AMF3Value)KEY;
     if (amf3_string_cmp(inlist->key, key) == 0)
 	return inlist->value;
     return NULL;
