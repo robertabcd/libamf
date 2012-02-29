@@ -121,6 +121,8 @@ static void amf3__free_value(struct amf3_value *v) {
 			amf3__kv_release_cb, NULL);
 		list_free(v->v.object.m.i.dynmemb_list);
 	    }
+	    amf3_release(v->v.object.traits);
+	    break;
 
 	case AMF3_TRAITS:
 	    amf3_release(v->v.traits.type);
