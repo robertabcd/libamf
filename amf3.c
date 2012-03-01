@@ -511,9 +511,11 @@ void amf3_ref_table_free(struct amf3_ref_table *r) {
 
 AMF3Value amf3_ref_table_push(struct amf3_ref_table *r, AMF3Value v) {
     assert(r);
-    if (r->nref == r->nalloc)
-	assert(r->refs = realloc(r->refs,
-		    (r->nalloc <<= 1) * sizeof(AMF3Value)));
+    if (r->nref == r->nalloc) {
+	r->refs = realloc(r->refs,
+		(r->nalloc <<= 1) * sizeof(AMF3Value));
+	assert(r->refs);
+    }
     return (r->refs[r->nref++] = amf3_retain(v));
 }
 
