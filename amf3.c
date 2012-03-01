@@ -666,16 +666,13 @@ AMF3Value amf3_parse_object(struct amf3_parse_context *c) {
 	    amf3_release(key);
 	}
 
-	// don't cache anonymous class
-	if (amf3_string_len(classname) > 0) {
-	    amf3_ref_table_push(c->traits_refs, traits);
+	amf3_ref_table_push(c->traits_refs, traits);
 
-	    LOG(LOG_DEBUG, "[TRAITS]{%d}[%s%s] %s\n",
-		    c->traits_refs->nref - 1,
-		    external ? "E" : " ",
-		    dynamic ? "D" : " ",
-		    amf3_string_cstr(classname));
-	}
+	LOG(LOG_DEBUG, "[TRAITS]{%d}[%s%s] %s\n",
+		c->traits_refs->nref - 1,
+		external ? "E" : " ",
+		dynamic ? "D" : " ",
+		amf3_string_cstr(classname));
     }
 
     AMF3Value obj;
