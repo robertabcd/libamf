@@ -354,8 +354,15 @@ static void *amf3__kv_get_cb(List list, int idx, void *INLIST, void *KEY) {
 void amf3_array_assoc_set(AMF3Value a, AMF3Value key, AMF3Value value) {
     assert(a && a->type == AMF3_ARRAY);
     assert(key && key->type == AMF3_STRING);
-    struct amf3_kv kv = {key, value};
-    list_foreach(a->v.array.assoc_list, amf3__kv_replace_cb, &kv);
+    struct amf3_kv kvfind = {key, value};
+    if (!list_foreach(a->v.array.assoc_list, amf3__kv_replace_cb, &kvfind)) {
+	struct amf3_kv *kv = ALLOC(struct amf3_kv, 1);
+	if (!kv)
+	    return;
+	kv->key = amf3_retain(key);
+	kv->value = amf3_retain(value);
+	list_push(a->v.array.assoc_list, kv);
+    }
 }
 
 AMF3Value amf3_array_assoc_get(AMF3Value a, AMF3Value key) {
@@ -448,15 +455,15 @@ void amf3_object_prop_set(AMF3Value o, AMF3Value key, AMF3Value value) {
 	    }
     }
     if (traits->dynamic) {
-	struct amf3_kv kv = {key, value};
+	struct amf3_kv kvfind = {key, value};
 	if (!list_foreach(o->v.object.m.i.dynmemb_list,
-		    amf3__kv_replace_cb, &kv)) {
+		    amf3__kv_replace_cb, &kvfind)) {
 	    struct amf3_kv *kv = ALLOC(struct amf3_kv, 1);
 	    if (!kv)
 		return;
 	    kv->key = amf3_retain(key);
 	    kv->value = amf3_retain(value);
-	    list_push(o->v.object.m.i.dynmemb_list, &kv);
+	    list_push(o->v.object.m.i.dynmemb_list, kv);
 	}
     }
 }
@@ -526,7 +533,7 @@ AMF3Value amf3_ref_table_get(struct amf3_ref_table *r, int idx) {
 int amf3_parse_u29(struct amf3_parse_context *c) {
     int j;
     int v = 0;
-    char i;
+    unsigned char i;
 
     for (j = 0; j < 3; j++) {
 	if (c->left < 1) return -1;
@@ -605,7 +612,7 @@ AMF3Value amf3_parse_array(struct amf3_parse_context *c) {
 
     int i;
     for (i = 0; i < len; i++) {
-	LOG(LOG_DEBUG, "[ARRAY] parsing dense part #%d\n", i);
+	LOG(LOG_DEBUG, "[ARRAY] parsing dense part #%d of %d\n", i, len);
 	AMF3Value elem = amf3_parse_value(c);
 	if (!elem) {
 	    amf3_release(arr);
@@ -767,6 +774,16 @@ static double amf3__read_double(struct amf3_parse_context *c) {
     return conv.d;
 }
 
+AMF3Value amf3_parse_date(struct amf3_parse_context *c) {
+    int ref = amf3_parse_u29(c);
+    if (ref < 0)
+	return NULL;
+    if (!(ref & 0x1))
+	return amf3_retain(amf3_ref_table_get(c->object_refs, ref >> 1));
+    return amf3_ref_table_push(c->object_refs,
+	    amf3_new_date(amf3__read_double(c)));
+}
+
 AMF3Value amf3_parse_value(struct amf3_parse_context *c) {
     assert(c->left > 0);
     char mark = *c->p++;
@@ -804,7 +821,7 @@ AMF3Value amf3_parse_value(struct amf3_parse_context *c) {
 	    return amf3__parse_binary_object(c, mark);
 
 	case AMF3_DATE:
-	    return amf3_new_date(amf3__read_double(c));
+	    return amf3_parse_date(c);
 
 	case AMF3_ARRAY:
 	    return amf3_parse_array(c);
