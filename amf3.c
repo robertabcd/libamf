@@ -806,7 +806,7 @@ AMF3Value amf3_parse_value(struct amf3_parse_context *c) {
 		int integer = amf3_parse_u29(c);
 		if (integer < 0)
 		    return NULL;
-		return amf3_new_integer(integer);
+		return amf3_new_integer((integer << 3) >> 3);
 	    }
 
 	case AMF3_DOUBLE:
