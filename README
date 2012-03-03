@@ -29,5 +29,8 @@ Supported Formats:
 Bugs:
     - [AMF0 ONLY] Cannot free objects
 
+Thanks:
+    - Flashbug's cvlib
+
 Contact:
     - Robert Wang: robertabcd [at] gmail [dot] com
