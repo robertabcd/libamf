@@ -54,7 +54,7 @@ static const struct amf3_plugin_parser g_plugin_parsers[] = {
 	flex_dump_arraycollection
     },
 #endif
-    {NULL, NULL, NULL}
+    {NULL, NULL, NULL, NULL}
 };
 
 #define ALLOC(type, nobjs) ((type *)malloc(sizeof(type) * nobjs))
