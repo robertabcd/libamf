@@ -90,6 +90,7 @@ static void *amf3__kv_release_cb(
     struct amf3_kv *inlist = (struct amf3_kv *)INLIST;
     amf3_release(inlist->key);
     amf3_release(inlist->value);
+    free(inlist);
     return NULL;
 }
 
@@ -754,6 +755,8 @@ AMF3Value amf3_parse_object(struct amf3_parse_context *c) {
 		amf3_release(key);
 		amf3_release(value);
 	    }
+	    if (key)
+		amf3_release(key);
 	}
     }
     amf3_release(traits);
