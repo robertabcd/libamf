@@ -15,46 +15,53 @@ static const struct amf3_plugin_parser g_plugin_parsers[] = {
 	"DSK",
 	flex_parse_acknowledgemessageext,
 	flex_free_acknowledgemessageext,
-	flex_dump_acknowledgemessageext
+	flex_dump_acknowledgemessageext,
+	flex_serialize_acknowledgemessageext
     },
     {
 	"flex.messaging.messages.AcknowledgeMessageExt",
 	flex_parse_acknowledgemessageext,
 	flex_free_acknowledgemessageext,
-	flex_dump_acknowledgemessageext
+	flex_dump_acknowledgemessageext,
+	flex_serialize_acknowledgemessageext
     },
     {
 	"DSA",
 	flex_parse_asyncmessageext,
 	flex_free_asyncmessageext,
-	flex_dump_asyncmessageext
+	flex_dump_asyncmessageext,
+	flex_serialize_asyncmessageext
     },
     {
 	"flex.messaging.messages.AsyncMessageExt",
 	flex_parse_asyncmessageext,
 	flex_free_asyncmessageext,
-	flex_dump_asyncmessageext
+	flex_dump_asyncmessageext,
+	flex_serialize_asyncmessageext
     },
     {
 	"DSC",
 	flex_parse_commandmessageext,
 	flex_free_commandmessageext,
-	flex_dump_commandmessageext
+	flex_dump_commandmessageext,
+	flex_serialize_commandmessageext
     },
     {
 	"flex.messaging.messages.CommandMessageExt",
 	flex_parse_commandmessageext,
 	flex_free_commandmessageext,
-	flex_dump_commandmessageext
+	flex_dump_commandmessageext,
+	flex_serialize_commandmessageext
     },
     {
 	"flex.messaging.io.ArrayCollection",
 	flex_parse_arraycollection,
 	flex_free_arraycollection,
-	flex_dump_arraycollection
+	flex_dump_arraycollection,
+	flex_serialize_arraycollection
     },
 #endif
-    {NULL, NULL, NULL, NULL}
+    {NULL, NULL, NULL, NULL, NULL}
 };
 
 #define ALLOC(type, nobjs) ((type *)malloc(sizeof(type) * nobjs))
@@ -531,6 +538,133 @@ AMF3Value amf3_ref_table_get(struct amf3_ref_table *r, int idx) {
     return idx < r->nref ? r->refs[idx] : NULL;
 }
 
+static void *amf3__find_double(struct amf3_ref_table *r,
+	int idx, AMF3Value v, void *ctx) {
+    struct amf3_valfind *vf = ctx;
+    if (v->type != AMF3_DOUBLE)
+	return NULL;
+    if (v->v.real == vf->value->v.real) {
+	vf->idx = idx;
+	return v;
+    }
+    return NULL;
+}
+
+static void *amf3__find_string(struct amf3_ref_table *r,
+	int idx, AMF3Value v, void *ctx) {
+    struct amf3_valfind *vf = ctx;
+    if (v->type != AMF3_STRING)
+	return NULL;
+    if (amf3_string_cmp(v, vf->value) == 0) {
+	vf->idx = idx;
+	return v;
+    }
+    return NULL;
+}
+
+static void *amf3__find_binary(struct amf3_ref_table *r,
+	int idx, AMF3Value v, void *ctx) {
+    struct amf3_valfind *vf = ctx;
+    if (v->type != vf->value->type ||
+	    v->v.binary.length != vf->value->v.binary.length)
+	return NULL;
+    if (memcmp(v->v.binary.data, vf->value->v.binary.data, v->v.binary.length) == 0) {
+	vf->idx = idx;
+	return v;
+    }
+    return NULL;
+}
+
+static void *amf3__find_date(struct amf3_ref_table *r,
+	int idx, AMF3Value v, void *ctx) {
+    struct amf3_valfind *vf = ctx;
+    if (v->type != AMF3_DATE)
+	return NULL;
+    if (v->v.date.value == vf->value->v.date.value) {
+	vf->idx = idx;
+	return v;
+    }
+    return NULL;
+}
+
+static void *amf3__find_by_pointer(struct amf3_ref_table *r,
+	int idx, AMF3Value v, void *ctx) {
+    struct amf3_valfind *vf = ctx;
+    if (v == vf->value) {
+	vf->idx = idx;
+	return v;
+    }
+    return NULL;
+}
+
+static void *amf3__find_traits(struct amf3_ref_table *r,
+	int idx, AMF3Value v, void *ctx) {
+    struct amf3_valfind *vf = ctx;
+    if (v->type != AMF3_TRAITS)
+	return NULL;
+    if (amf3_string_cmp(v->v.traits.type, vf->value->v.traits.type) == 0) {
+	vf->idx = idx;
+	return v;
+    }
+    return NULL;
+}
+
+void *amf3_ref_table_foreach(struct amf3_ref_table *r,
+	void *(* callback)(struct amf3_ref_table *r, int idx, AMF3Value elem, void *ctx),
+	void *ctx) {
+    void *ret;
+    int i;
+    for (i = 0; i < r->nref; i++)
+	if ((ret = callback(r, i, r->refs[i], ctx)) != NULL)
+	    return ret;
+    return NULL;
+}
+
+int amf3_ref_table_find(struct amf3_ref_table *r, AMF3Value v) {
+    struct amf3_valfind vf = {v, -1};
+    switch (v->type) {
+	case AMF3_UNDEFINED:
+	case AMF3_NULL:
+	case AMF3_FALSE:
+	case AMF3_TRUE:
+	case AMF3_INTEGER:
+	    // never caches
+	    break;
+
+	case AMF3_DOUBLE:
+	    amf3_ref_table_foreach(r, amf3__find_double, &vf);
+	    break;
+
+	case AMF3_STRING:
+	    amf3_ref_table_foreach(r, amf3__find_string, &vf);
+	    break;
+
+	case AMF3_XMLDOC:
+	case AMF3_XML:
+	case AMF3_BYTEARRAY:
+	    amf3_ref_table_foreach(r, amf3__find_binary, &vf);
+	    break;
+
+	case AMF3_OBJECT:
+	case AMF3_ARRAY:
+	    amf3_ref_table_foreach(r, amf3__find_by_pointer, &vf);
+	    break;
+
+	case AMF3_DATE:
+	    amf3_ref_table_foreach(r, amf3__find_date, &vf);
+	    break;
+
+	case AMF3_TRAITS:
+	    amf3_ref_table_foreach(r, amf3__find_traits, &vf);
+	    break;
+
+	default:
+	    LOG(LOG_ERROR, "%s: unknown type %02X\n", __func__, v->type);
+	    break;
+    }
+    return vf.idx;
+}
+
 int amf3_parse_u29(struct amf3_parse_context *c) {
     int j;
     int v = 0;
@@ -984,4 +1118,273 @@ void amf3_dump_value(AMF3Value v, int depth) {
 	default:
 	    LOG(LOG_ERROR, "(Unknown %02X)\n", v->type);
     }
+}
+
+AMF3SerializeContext amf3_serialize_context_new() {
+    AMF3SerializeContext c = CALLOC(1, struct amf3_serialize_context);
+    if (c) {
+	c->object_refs = amf3_ref_table_new();
+	c->string_refs = amf3_ref_table_new();
+	c->traits_refs = amf3_ref_table_new();
+	if (!c->object_refs || !c->string_refs || !c->traits_refs) {
+	    amf3_serialize_context_free(c);
+	    return NULL;
+	}
+
+	c->allocated = 1024;
+	c->buffer = ALLOC(char, c->allocated);
+	if (!c->buffer) {
+	    amf3_serialize_context_free(c);
+	    return NULL;
+	}
+	c->length = 0;
+    }
+    return c;
+}
+
+void amf3_serialize_context_free(AMF3SerializeContext c) {
+    assert(c);
+    if (c->buffer)
+	free(c->buffer);
+    if (c->object_refs)
+	amf3_ref_table_free(c->object_refs);
+    if (c->string_refs)
+	amf3_ref_table_free(c->string_refs);
+    if (c->traits_refs)
+	amf3_ref_table_free(c->traits_refs);
+    free(c);
+}
+
+int amf3_serialize_write_func(AMF3SerializeContext c, const void *data, int len) {
+    if (c->length + len > c->allocated) {
+	while (c->allocated >= 0 && c->length + len > c->allocated)
+	    c->allocated <<= 1;
+	char *p = realloc(c->buffer, c->allocated);
+	if (!p)
+	    return -1;
+	c->buffer = p;
+    }
+    memcpy(c->buffer + c->length, data, len);
+    c->length += len;
+    return len;
+}
+
+const char *amf3_serialize_context_get_buffer(AMF3SerializeContext c, int *len) {
+    if (len)
+	*len = c->length;
+    return c->buffer;
+}
+
+int amf3_serialize_u29(AMF3SerializeContext c, int integer) {
+    unsigned char b[4];
+    int offset = 0, len = 4;
+    integer &= 0x3FFFFFFF;
+    if (integer >> 21) {
+	b[0] = 0x80 | ((integer >> 22) & 0x7F);
+	b[1] = 0x80 | ((integer >> 15) & 0x7F);
+	b[2] = 0x80 | ((integer >>  8) & 0x7F);
+	b[3] = integer & 0xFF;
+    } else {
+	b[0] = (integer >> 14) & 0x7F;
+	b[1] = (integer >>  7) & 0x7F;
+	b[2] = integer & 0x7F;
+	len--;
+	if (!b[0]) {
+	    len--;
+	    offset++;
+	    if (!b[1]) {
+		len--;
+		offset++;
+	    }
+	}
+	b[0] |= 0x80;
+	b[1] |= 0x80;
+    }
+    return amf3_serialize_write_func(c, b + offset, len);
+}
+
+static int amf3__serialize_object_ref(AMF3SerializeContext c, int refidx) {
+    return amf3_serialize_u29(c, refidx << 1);
+}
+
+static int amf3__serialize_double(AMF3SerializeContext c, double real) {
+    union {
+	uint64_t i;
+	double d;
+    } conv;
+    conv.d = real;
+    conv.i = HTON64(conv.i);
+    return amf3_serialize_write_func(c, &conv.i, sizeof(conv.i));
+}
+
+static int amf3__serialize_string(AMF3SerializeContext c, AMF3Value v) {
+    // empty string, never sent by ref
+    if (amf3_string_len(v) == 0)
+	return amf3_serialize_u29(c, 0x01);
+
+    // some functions need to serialize a string without marker,
+    // so check string ref here instead of in `amf3_serialize_value'.
+    int refidx = amf3_ref_table_find(c->string_refs, v);
+    if (refidx < 0)
+	amf3_ref_table_push(c->string_refs, v);
+    else
+	return amf3__serialize_object_ref(c, refidx);
+    LOG(LOG_DEBUG, "string_ref[%d] = \"%s\"\n",
+	    c->string_refs->nref - 1, amf3_string_cstr(v));
+
+    int wrote = amf3_serialize_u29(c, (amf3_string_len(v) << 1) | 1);
+    wrote += amf3_serialize_write_func(c, amf3_string_cstr(v),
+	    amf3_string_len(v));
+    return wrote;
+}
+
+static void *amf3__serialize_kv_cb(
+	List list, int idx, void *INLIST, void *c) {
+    struct amf3_kv *inlist = (struct amf3_kv *)INLIST;
+    amf3__serialize_string((AMF3SerializeContext)c, inlist->key);
+    amf3_serialize_value((AMF3SerializeContext)c, inlist->value);
+    return NULL;
+}
+
+static void *amf3__serialize_v_cb(
+	List list, int idx, void *elem, void *c) {
+    amf3_serialize_value((AMF3SerializeContext)c, (AMF3Value)elem);
+    return NULL;
+}
+
+static int amf3__serialize_array(AMF3SerializeContext c, AMF3Value v) {
+    assert(v->type == AMF3_ARRAY);
+    int currlen = c->length;
+    amf3_serialize_u29(c, (list_count(v->v.array.dense_list) << 1) | 1);
+    list_foreach(v->v.array.assoc_list, amf3__serialize_kv_cb, c);
+    amf3_serialize_u29(c, 0x01);
+    list_foreach(v->v.array.dense_list, amf3__serialize_v_cb, c);
+    return c->length - currlen;
+}
+
+static int amf3__serialize_object(AMF3SerializeContext c, AMF3Value v) {
+    // object ref already considered in amf3_serialize_value
+    // only take care of traits ref here
+    int wrote = 0;
+
+    AMF3Value traits = v->v.object.traits;
+    struct amf3_traits *t = &traits->v.traits;
+    int refidx = amf3_ref_table_find(c->traits_refs, traits);
+    if (refidx >= 0) {
+	wrote += amf3_serialize_u29(c, (refidx << 2) | 1);
+    } else {
+	int oref = 0;
+	if (t->externalizable)
+	    oref = 0x7;
+	else
+	    oref |= (t->nmemb << 4) | ((t->dynamic ? 1 : 0) << 3) | 3;
+	wrote += amf3_serialize_u29(c, oref);
+	wrote += amf3__serialize_string(c, t->type);
+
+	int i;
+	for (i = 0; i < t->nmemb; i++)
+	    wrote += amf3__serialize_string(c, t->members[i]);
+
+	amf3_ref_table_push(c->traits_refs, traits);
+	LOG(LOG_DEBUG, "traits_ref[%d] = type:%s\n",
+		c->traits_refs->nref - 1, amf3_string_cstr(t->type));
+    }
+
+    if (t->externalizable) {
+	const struct amf3_plugin_parser *pp =
+	    amf3__find_plugin_parser(t->type);
+	if (pp)
+	    wrote += pp->serializefunc(c, t->type, v->v.object.m.external_ctx);
+	else
+	    LOG(LOG_ERROR, "%s: external serializer of type '%s' returns error\n",
+		    __func__, amf3_string_cstr(t->type));
+    } else {
+	int i;
+	for (i = 0; i < t->nmemb; i++)
+	    wrote += amf3_serialize_value(c, v->v.object.m.i.member_values[i]);
+
+	if (t->dynamic) {
+	    list_foreach(v->v.object.m.i.dynmemb_list, amf3__serialize_kv_cb, c);
+	    amf3_serialize_u29(c, 0x01);
+	}
+    }
+    return wrote;
+}
+
+int amf3_serialize_value(AMF3SerializeContext c, AMF3Value v) {
+    char mark = v->type;
+
+    int wrote = amf3_serialize_write_func(c, &mark, sizeof(mark));
+
+    // reference-capable
+    int refidx = -1;
+    switch (mark) {
+	case AMF3_XMLDOC:
+	case AMF3_XML:
+	case AMF3_BYTEARRAY:
+	case AMF3_DATE:
+	case AMF3_ARRAY:
+	case AMF3_OBJECT:
+	    refidx = amf3_ref_table_find(c->object_refs, v);
+	    if (refidx < 0)
+		amf3_ref_table_push(c->object_refs, v);
+	    else
+		return wrote + amf3__serialize_object_ref(c, refidx);
+	    break;
+
+	case AMF3_STRING:
+	    // string ref are handled in `amf3__serialize_string'
+	    break;
+
+	default:
+	    break;
+    }
+
+    switch (mark) {
+	case AMF3_UNDEFINED:
+	case AMF3_NULL:
+	case AMF3_FALSE:
+	case AMF3_TRUE:
+	    // marker only
+	    break;
+
+	case AMF3_INTEGER:
+	    wrote += amf3_serialize_u29(c, v->v.integer);
+	    break;
+
+	case AMF3_DOUBLE:
+	    wrote += amf3__serialize_double(c, v->v.real);
+	    break;
+
+	case AMF3_STRING:
+	    wrote += amf3__serialize_string(c, v);
+	    break;
+
+	case AMF3_XMLDOC:
+	case AMF3_XML:
+	case AMF3_BYTEARRAY:
+	    wrote += amf3_serialize_u29(c, (v->v.binary.length << 1) | 1);
+	    wrote += amf3_serialize_write_func(c, v->v.binary.data,
+		    v->v.binary.length);
+	    break;
+
+	case AMF3_DATE:
+	    wrote += amf3_serialize_u29(c, 1);
+	    wrote += amf3__serialize_double(c, v->v.date.value);
+	    break;
+
+	case AMF3_ARRAY:
+	    wrote += amf3__serialize_array(c, v);
+	    break;
+
+	case AMF3_OBJECT:
+	    wrote += amf3__serialize_object(c, v);
+	    break;
+
+	default:
+	    LOG(LOG_ERROR, "%s: unknown type %02X\n", __func__, mark);
+	    return -1;
+    }
+
+    return wrote;
 }

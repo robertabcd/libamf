@@ -81,6 +81,11 @@ struct amf3_kv {
     struct amf3_value *value;
 };
 
+struct amf3_valfind {
+    struct amf3_value *value;
+    int idx;
+};
+
 #define AMF3_REF_TABLE_PREALLOC (128)
 struct amf3_ref_table {
     struct amf3_value **refs;
@@ -98,19 +103,34 @@ struct amf3_parse_context {
     struct amf3_ref_table *traits_refs;
 };
 
+struct amf3_serialize_context {
+    char *buffer;
+    int allocated;
+    int length;
+    struct amf3_ref_table *object_refs;
+    struct amf3_ref_table *string_refs;
+    struct amf3_ref_table *traits_refs;
+};
+
 typedef struct amf3_value *AMF3Value;
 typedef struct amf3_parse_context *AMF3ParseContext;
+typedef struct amf3_serialize_context *AMF3SerializeContext;
 /* returns 0 if success; otherwise, failed. */
 typedef int (* AMF3PluginParserParseFunc) (
 	AMF3ParseContext c, AMF3Value classname, void **external_ctx);
 typedef void (* AMF3PluginExternalObjectFreeFunc) (void *external_ctx);
 typedef void (* AMF3PluginExternalObjectDumpFunc) (void *external_ctx, int depth);
+typedef int  (* AMF3PluginExternalObjectWriteFunc) (
+	AMF3SerializeContext c, const void *data, int len);
+typedef int  (* AMF3PluginExternalObjectSerializeFunc) (
+	AMF3SerializeContext c, AMF3Value classname, void *external_ctx);
 
 struct amf3_plugin_parser {
     char *classname;
     AMF3PluginParserParseFunc handler;
     AMF3PluginExternalObjectFreeFunc freefunc;
     AMF3PluginExternalObjectDumpFunc dumpfunc;
+    AMF3PluginExternalObjectSerializeFunc serializefunc;
 };
 
 AMF3Value amf3_retain(AMF3Value v);
@@ -159,5 +179,12 @@ void amf3_parse_context_free(AMF3ParseContext c);
 
 void amf3_dump_value(AMF3Value v, int depth);
 void amf3__print_indent(int indent);
+
+AMF3SerializeContext amf3_serialize_context_new();
+void amf3_serialize_context_free(AMF3SerializeContext c);
+const char *amf3_serialize_context_get_buffer(AMF3SerializeContext c, int *len);
+int amf3_serialize_write_func(AMF3SerializeContext c, const void *data, int len);
+int amf3_serialize_u29(AMF3SerializeContext c, int integer);
+int amf3_serialize_value(AMF3SerializeContext c, AMF3Value v);
 
 #endif

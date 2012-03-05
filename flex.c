@@ -143,6 +143,47 @@ void flex_dump_abstractmessage(void *AM, int depth) {
     flex__dump_amf3_value("messageIdBytes", am->message_id_bytes, depth);
 }
 
+int flex_serialize_abstractmessage(
+	AMF3SerializeContext c, AMF3Value classname, void *external_ctx) {
+    Flex_AbstractMessage *am = (Flex_AbstractMessage *)external_ctx;
+    int wrote = 0;
+
+    unsigned char fl0 = 0;
+    if (am->body)	fl0 |= BODY_FLAG;
+    if (am->client_id)	fl0 |= CLIENT_ID_FLAG;
+    if (am->destination)fl0 |= DESTINATION_FLAG;
+    if (am->headers)	fl0 |= HEADERS_FLAG;
+    if (am->message_id) fl0 |= MESSAGE_ID_FLAG;
+    if (am->timestamp)	fl0 |= TIMESTAMP_FLAG;
+    if (am->ttl)	fl0 |= TIME_TO_LIVE_FLAG;
+
+    unsigned char fl1 = 0;
+    if (am->client_id_bytes) fl1 |= CLIENT_ID_BYTES_FLAG;
+    if (am->message_id_bytes)fl1 |= MESSAGE_ID_BYTES_FLAG;
+    if (fl1) fl0 |= 0x80;
+
+    wrote += amf3_serialize_write_func(c, &fl0, sizeof(fl0));
+    if (fl1)
+	wrote += amf3_serialize_write_func(c, &fl1, sizeof(fl1));
+
+    if (am->body)	wrote += amf3_serialize_value(c, am->body);
+    if (am->client_id)	wrote += amf3_serialize_value(c, am->client_id);
+    if (am->destination)wrote += amf3_serialize_value(c, am->destination);
+    if (am->headers)	wrote += amf3_serialize_value(c, am->headers);
+    if (am->message_id) wrote += amf3_serialize_value(c, am->message_id);
+    if (am->timestamp)	wrote += amf3_serialize_value(c, am->timestamp);
+    if (am->ttl)	wrote += amf3_serialize_value(c, am->ttl);
+
+    if (fl1) {
+	if (am->client_id_bytes)
+	    wrote += amf3_serialize_value(c, am->client_id_bytes);
+	if (am->message_id_bytes)
+	    wrote += amf3_serialize_value(c, am->message_id_bytes);
+    }
+
+    return wrote;
+}
+
 int flex_parse_asyncmessage(
 	AMF3ParseContext c, AMF3Value classname, void **external_ctx) {
     Flex_AsyncMessage *am = CALLOC(1, Flex_AsyncMessage);
@@ -188,6 +229,28 @@ void flex_dump_asyncmessage(void *AM, int depth) {
     flex__dump_amf3_value("correlationIdBytes", am->correlation_id_bytes, depth);
 }
 
+int flex_serialize_asyncmessage(
+	AMF3SerializeContext c, AMF3Value classname, void *external_ctx) {
+    Flex_AsyncMessage *am = (Flex_AsyncMessage *)external_ctx;
+    int wrote = 0;
+
+    wrote += flex_serialize_abstractmessage(c, classname, am->am);
+
+    unsigned char fl = 0;
+    if (am->correlation_id)
+	fl |= CORRELATION_ID_FLAG;
+    if (am->correlation_id_bytes)
+	fl |= CORRELATION_ID_BYTES_FLAG;
+
+    wrote += amf3_serialize_write_func(c, &fl, sizeof(fl));
+    if (am->correlation_id)
+	wrote += amf3_serialize_value(c, am->correlation_id);
+    if (am->correlation_id_bytes)
+	wrote += amf3_serialize_value(c, am->correlation_id_bytes);
+
+    return wrote;
+}
+
 int flex_parse_asyncmessageext(
 	AMF3ParseContext c, AMF3Value classname, void **external_ctx) {
     return flex_parse_asyncmessage(c, classname, external_ctx);
@@ -199,6 +262,11 @@ void flex_free_asyncmessageext(void *am) {
 
 void flex_dump_asyncmessageext(void *am, int depth) {
     flex_dump_asyncmessage(am, depth);
+}
+
+int flex_serialize_asyncmessageext(
+	AMF3SerializeContext c, AMF3Value classname, void *external_ctx) {
+    return flex_serialize_asyncmessage(c, classname, external_ctx);
 }
 
 int flex_parse_acknowledgemessage(
@@ -237,6 +305,14 @@ void flex_dump_acknowledgemessage(void *AM, int depth) {
     flex_dump_asyncmessage(am->am, depth);
 }
 
+int flex_serialize_acknowledgemessage(
+	AMF3SerializeContext c, AMF3Value classname, void *external_ctx) {
+    Flex_AcknowledgeMessage *am = (Flex_AcknowledgeMessage *)external_ctx;
+    int wrote = flex_serialize_asyncmessage(c, classname, am->am);
+    unsigned char fl = 0;
+    return wrote + amf3_serialize_write_func(c, &fl, sizeof(fl));
+}
+
 int flex_parse_acknowledgemessageext(
 	AMF3ParseContext c, AMF3Value classname, void **external_ctx) {
     return flex_parse_acknowledgemessage(c, classname, external_ctx);
@@ -250,6 +326,11 @@ void flex_dump_acknowledgemessageext(void *am, int depth) {
     flex_dump_acknowledgemessage(am, depth);
 }
 
+int flex_serialize_acknowledgemessageext(
+	AMF3SerializeContext c, AMF3Value classname, void *external_ctx) {
+    return flex_serialize_acknowledgemessage(c, classname, external_ctx);
+}
+
 int flex_parse_errormessage(
 	AMF3ParseContext c, AMF3Value classname, void **external_ctx) {
     return flex_parse_acknowledgemessage(c, classname, external_ctx);
@@ -261,6 +342,11 @@ void flex_free_errormessage(void *em) {
 
 void flex_dump_errormessage(void *em, int depth) {
     flex_dump_acknowledgemessage(em, depth);
+}
+
+int flex_serialize_errormessage(
+	AMF3SerializeContext c, AMF3Value classname, void *external_ctx) {
+    return flex_serialize_errormessage(c, classname, external_ctx);
 }
 
 int flex_parse_commandmessage(
@@ -302,6 +388,22 @@ void flex_dump_commandmessage(void *CM, int depth) {
     flex__dump_amf3_value("operation", cm->operation, depth);
 }
 
+int flex_serialize_commandmessage(
+	AMF3SerializeContext c, AMF3Value classname, void *external_ctx) {
+    Flex_CommandMessage *cm = (Flex_CommandMessage *)external_ctx;
+    int wrote = flex_serialize_asyncmessage(c, classname, cm->am);
+
+    unsigned char fl = 0;
+    if (cm->operation)
+	fl |= OPERATION_FLAG;
+
+    wrote += amf3_serialize_write_func(c, &fl, sizeof(fl));
+    if (cm->operation)
+	wrote += amf3_serialize_value(c, cm->operation);
+
+    return wrote;
+}
+
 int flex_parse_commandmessageext(
 	AMF3ParseContext c, AMF3Value classname, void **external_ctx) {
     return flex_parse_commandmessage(c, classname, external_ctx);
@@ -313,6 +415,11 @@ void flex_free_commandmessageext(void *cm) {
 
 void flex_dump_commandmessageext(void *cm, int depth) {
     flex_dump_commandmessage(cm, depth);
+}
+
+int flex_serialize_commandmessageext(
+	AMF3SerializeContext c, AMF3Value classname, void *external_ctx) {
+    return flex_serialize_commandmessage(c, classname, external_ctx);
 }
 
 int flex_parse_arraycollection(
@@ -336,6 +443,11 @@ void flex_dump_arraycollection(void *AC, int depth) {
     flex__dump_amf3_value("source", ac->source, depth);
 }
 
+int flex_serialize_arraycollection(
+	AMF3SerializeContext c, AMF3Value classname, void *external_ctx) {
+    return amf3_serialize_value(c, ((Flex_ArrayCollection *)external_ctx)->source);
+}
+
 int flex_parse_arraylist(
 	AMF3ParseContext c, AMF3Value classname, void **external_ctx) {
     return flex_parse_arraycollection(c, classname, external_ctx);
@@ -347,6 +459,11 @@ void flex_free_arraylist(void *al) {
 
 void flex_dump_arraylist(void *al, int depth) {
     flex_dump_arraycollection(al, depth);
+}
+
+int flex_serialize_arraylist(
+	AMF3SerializeContext c, AMF3Value classname, void *external_ctx) {
+    return flex_serialize_arraycollection(c, classname, external_ctx);
 }
 
 int flex_parse_objectproxy(
@@ -370,6 +487,11 @@ void flex_dump_objectproxy(void *OP, int depth) {
     flex__dump_amf3_value("object", op->object, depth);
 }
 
+int flex_serialize_objectproxy(
+	AMF3SerializeContext c, AMF3Value classname, void *external_ctx) {
+    return amf3_serialize_value(c, ((Flex_ObjectProxy *)external_ctx)->object);
+}
+
 int flex_parse_managedobjectproxy(
 	AMF3ParseContext c, AMF3Value classname, void **external_ctx) {
     return flex_parse_objectproxy(c, classname, external_ctx);
@@ -381,6 +503,11 @@ void flex_free_managedobjectproxy(void *mop) {
 
 void flex_dump_managedobjectproxy(void *mop, int depth) {
     flex_dump_objectproxy(mop, depth);
+}
+
+int flex_serialize_managedobjectproxy(
+	AMF3SerializeContext c, AMF3Value classname, void *external_ctx) {
+    return flex_serialize_objectproxy(c, classname, external_ctx);
 }
 
 int flex_parse_serializationproxy(
@@ -402,4 +529,10 @@ void flex_free_serializationproxy(void *SP) {
 void flex_dump_serializationproxy(void *SP, int depth) {
     Flex_SerializationProxy *sp = (Flex_SerializationProxy *)SP;
     flex__dump_amf3_value("defaultInstance", sp->default_instance, depth);
+}
+
+int flex_serialize_serializationproxy(
+	AMF3SerializeContext c, AMF3Value classname, void *external_ctx) {
+    return amf3_serialize_value(c,
+	    ((Flex_SerializationProxy *)external_ctx)->default_instance);
 }

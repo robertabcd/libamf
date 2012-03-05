@@ -148,4 +148,31 @@ void flex_dump_arraylist(void *al, int depth);
 void flex_dump_objectproxy(void *OP, int depth);
 void flex_dump_managedobjectproxy(void *mop, int depth);
 void flex_dump_serializationproxy(void *SP, int depth);
+
+int flex_serialize_abstractmessage(
+	AMF3SerializeContext c, AMF3Value classname, void *external_ctx);
+int flex_serialize_asyncmessage(
+	AMF3SerializeContext c, AMF3Value classname, void *external_ctx);
+int flex_serialize_asyncmessageext(
+	AMF3SerializeContext c, AMF3Value classname, void *external_ctx);
+int flex_serialize_acknowledgemessage(
+	AMF3SerializeContext c, AMF3Value classname, void *external_ctx);
+int flex_serialize_acknowledgemessageext(
+	AMF3SerializeContext c, AMF3Value classname, void *external_ctx);
+int flex_serialize_errormessage(
+	AMF3SerializeContext c, AMF3Value classname, void *external_ctx);
+int flex_serialize_commandmessage(
+	AMF3SerializeContext c, AMF3Value classname, void *external_ctx);
+int flex_serialize_commandmessageext(
+	AMF3SerializeContext c, AMF3Value classname, void *external_ctx);
+int flex_serialize_arraycollection(
+	AMF3SerializeContext c, AMF3Value classname, void *external_ctx);
+int flex_serialize_arraylist(
+	AMF3SerializeContext c, AMF3Value classname, void *external_ctx);
+int flex_serialize_objectproxy(
+	AMF3SerializeContext c, AMF3Value classname, void *external_ctx);
+int flex_serialize_managedobjectproxy(
+	AMF3SerializeContext c, AMF3Value classname, void *external_ctx);
+int flex_serialize_serializationproxy(
+	AMF3SerializeContext c, AMF3Value classname, void *external_ctx);
 #endif
