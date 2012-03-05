@@ -966,7 +966,7 @@ void amf3_dump_value(AMF3Value v, int depth) {
 		    if (traits->v.traits.dynamic) {
 			amf3__print_indent(depth);
 			fprintf(fp, "(dynmember)\n");
-			int nxdepth = depth + 2;
+			int nxdepth = depth + 1;
 			list_foreach(v->v.object.m.i.dynmemb_list,
 				amf3__dump_kv, &nxdepth);
 		    }
