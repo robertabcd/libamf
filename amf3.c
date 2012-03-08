@@ -431,6 +431,17 @@ AMF3Value amf3_new_object(AMF3Value type, char dynamic,
     return v;
 }
 
+AMF3Value amf3_object_traits_get(AMF3Value o) {
+    assert(o && o->type == AMF3_OBJECT);
+    return o->v.object.traits;
+}
+
+void *amf3_object_external_get(AMF3Value o) {
+    assert(o && o->type == AMF3_OBJECT);
+    assert(o->v.object.traits->v.traits.externalizable);
+    return o->v.object.m.external_ctx;
+}
+
 AMF3Value amf3_object_prop_get(AMF3Value o, AMF3Value key) {
     assert(o && o->type == AMF3_OBJECT);
     assert(key && key->type == AMF3_STRING);
@@ -486,6 +497,31 @@ void amf3_object_prop_set(AMF3Value o, AMF3Value key, AMF3Value value) {
 	    list_push(o->v.object.m.i.dynmemb_list, kv);
 	}
     }
+}
+
+AMF3Value amf3_traits_type_get(AMF3Value o) {
+    struct amf3_traits *t = &o->v.object.traits->v.traits;
+    return t->type;
+}
+
+int amf3_traits_is_externalizable(AMF3Value o) {
+    struct amf3_traits *t = &o->v.object.traits->v.traits;
+    return t->externalizable ? 1 : 0;
+}
+
+int amf3_traits_is_dynamic(AMF3Value o) {
+    struct amf3_traits *t = &o->v.object.traits->v.traits;
+    return t->dynamic ? 1 : 0;
+}
+
+int amf3_traits_num_members(AMF3Value o) {
+    struct amf3_traits *t = &o->v.object.traits->v.traits;
+    return t->nmemb;
+}
+
+AMF3Value amf3_traits_member_name_get(AMF3Value o, int idx) {
+    struct amf3_traits *t = &o->v.object.traits->v.traits;
+    return t->members[idx];
 }
 
 static AMF3Value amf3__new_object_external_direct(

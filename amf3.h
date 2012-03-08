@@ -163,8 +163,16 @@ void amf3_array_push(AMF3Value a, AMF3Value v);
 void amf3_array_assoc_set(AMF3Value a, AMF3Value key, AMF3Value value);
 AMF3Value amf3_array_assoc_get(AMF3Value a, AMF3Value key);
 
+AMF3Value amf3_object_traits_get(AMF3Value o);
+void *amf3_object_external_get(AMF3Value o);
 AMF3Value amf3_object_prop_get(AMF3Value o, AMF3Value key);
 void amf3_object_prop_set(AMF3Value o, AMF3Value key, AMF3Value value);
+
+AMF3Value amf3_traits_type_get(AMF3Value o);
+int amf3_traits_is_externalizable(AMF3Value o);
+int amf3_traits_is_dynamic(AMF3Value o);
+int amf3_traits_num_members(AMF3Value o);
+AMF3Value amf3_traits_member_name_get(AMF3Value o, int idx);
 
 struct amf3_ref_table *amf3_ref_table_new();
 void amf3_ref_table_free(struct amf3_ref_table *r);
