@@ -130,6 +130,32 @@ static void flex__dump_amf3_value(const char *key, AMF3Value value, int depth) {
     amf3_dump_value(value, depth + 1);
 }
 
+static void flex__dump_uuid(const char *key, AMF3Value v, int depth) {
+    static const char hex[] = "0123456789ABCDEF";
+    if (!v)
+	return;
+
+    const unsigned char *u = (const unsigned char *)amf3_binary_data(v);
+    int length = amf3_binary_len(v);
+
+    amf3__print_indent(depth);
+    fprintf(stderr, "\"%s\": (UUID) ", key);
+
+    if (length != 16) {
+	fprintf(stderr, "(Invalid Length: %d) ", length);
+	amf3_dump_value(v, depth);
+	return;
+    }
+
+    int i;
+    for (i = 0; i < length; i++) {
+	fprintf(stderr, "%c%c", hex[u[i] >> 4], hex[u[i] & 0xF]);
+	if (i == 3 || i == 5 || i == 7 || i == 9)
+	    fprintf(stderr, "-");
+    }
+    fprintf(stderr, "\n");
+}
+
 void flex_dump_abstractmessage(void *AM, int depth) {
     Flex_AbstractMessage *am = (Flex_AbstractMessage *)AM;
     flex__dump_amf3_value("body", am->body, depth);
@@ -139,8 +165,8 @@ void flex_dump_abstractmessage(void *AM, int depth) {
     flex__dump_amf3_value("messageId", am->message_id, depth);
     flex__dump_amf3_value("timestamp", am->timestamp, depth);
     flex__dump_amf3_value("timeToLive", am->ttl, depth);
-    flex__dump_amf3_value("clientIdBytes", am->client_id_bytes, depth);
-    flex__dump_amf3_value("messageIdBytes", am->message_id_bytes, depth);
+    flex__dump_uuid("clientIdBytes", am->client_id_bytes, depth);
+    flex__dump_uuid("messageIdBytes", am->message_id_bytes, depth);
 }
 
 int flex_serialize_abstractmessage(
@@ -226,7 +252,7 @@ void flex_dump_asyncmessage(void *AM, int depth) {
     Flex_AsyncMessage *am = (Flex_AsyncMessage *)AM;
     flex_dump_abstractmessage(am->am, depth);
     flex__dump_amf3_value("correlationId", am->correlation_id, depth);
-    flex__dump_amf3_value("correlationIdBytes", am->correlation_id_bytes, depth);
+    flex__dump_uuid("correlationIdBytes", am->correlation_id_bytes, depth);
 }
 
 int flex_serialize_asyncmessage(

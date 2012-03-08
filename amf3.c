@@ -285,6 +285,18 @@ const char *amf3_string_cstr(AMF3Value v) {
     return v->v.binary.data;
 }
 
+int amf3_binary_len(AMF3Value v) {
+    assert(v && (v->type == AMF3_BYTEARRAY || v->type == AMF3_XML
+		|| v->type == AMF3_XMLDOC || v->type == AMF3_STRING));
+    return v->v.binary.length;
+}
+
+const char *amf3_binary_data(AMF3Value v) {
+    assert(v && (v->type == AMF3_BYTEARRAY || v->type == AMF3_XML
+		|| v->type == AMF3_XMLDOC || v->type == AMF3_STRING));
+    return v->v.binary.data;
+}
+
 static struct amf3_value *amf3__new_traits(AMF3Value type,
 	char externalizable, char dynamic, int nmemb) {
     LOG(LOG_DEBUG, "[TRAITS][%s%s](%d)%s\n",
@@ -871,6 +883,13 @@ AMF3Value amf3_parse_object(struct amf3_parse_context *c) {
 		return NULL;
 	    }
 	    obj->v.object.m.i.member_values[i] = value;
+
+#if DEBUG_LEVEL >= LOG_DEBUG
+	    if (value->type != AMF3_OBJECT && value->type != AMF3_ARRAY) {
+		LOG(LOG_DEBUG, "=> ");
+		amf3_dump_value(value, 0);
+	    }
+#endif
 	}
 
 	if (dynamic) {

@@ -156,6 +156,9 @@ int amf3_string_cmp(AMF3Value a, AMF3Value b);
 int amf3_string_len(AMF3Value v);
 const char *amf3_string_cstr(AMF3Value v);
 
+int amf3_binary_len(AMF3Value v);
+const char *amf3_binary_data(AMF3Value v);
+
 void amf3_array_push(AMF3Value a, AMF3Value v);
 void amf3_array_assoc_set(AMF3Value a, AMF3Value key, AMF3Value value);
 AMF3Value amf3_array_assoc_get(AMF3Value a, AMF3Value key);
